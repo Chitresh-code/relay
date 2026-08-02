@@ -21,6 +21,7 @@ function App() {
   const t = mode === "dark" ? darkTheme : lightTheme;
 
   async function pushExchange(text: string) {
+    if (isTyping) return; // one reply in flight at a time — model only ever answers the first stacked message
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text };
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);

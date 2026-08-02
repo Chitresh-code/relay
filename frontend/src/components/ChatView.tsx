@@ -140,6 +140,7 @@ export function ChatView({
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
             placeholder="type a command…"
+            disabled={isTyping}
             style={{
               flex: 1,
               border: "none",
@@ -151,18 +152,30 @@ export function ChatView({
           />
           <button
             type="submit"
+            disabled={isTyping}
             style={{
               border: "none",
-              cursor: "pointer",
+              cursor: isTyping ? "default" : "pointer",
               background: t.accent,
               color: t.panelBg,
               font: "600 12px 'JetBrains Mono',monospace",
               padding: "8px 14px",
               borderRadius: 4,
+              opacity: isTyping ? 0.5 : 1,
             }}
           >
             send
           </button>
+        </div>
+        <div
+          style={{
+            maxWidth: 640,
+            margin: "8px auto 0",
+            font: "11px 'JetBrains Mono',monospace",
+            color: t.textMuted,
+          }}
+        >
+          Messages are stored to improve replies and are purged after 90 days.
         </div>
       </form>
     </div>

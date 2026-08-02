@@ -87,11 +87,10 @@ the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's
 ### 3.5 Observability & governance
 **Status: partially built** — see [[ROADMAP.md]].
 - **Shipped: conversations are stored** in Postgres (`app/sessions.py`), plus escalations and leads
-  (§4). Retention window below is the intended policy; the purge job that enforces it is still
-  planned, as is the privacy notice disclosing it.
+  (§4). Retention window below is now enforced by a `pg_cron` purge job (one-time setup script,
+  `backend/scripts/retention_purge.sql`), and disclosed via a privacy notice line on the widget.
 - **Planned**: aggregate usage stats (requests, tokens, estimated cost, unique sessions/day),
   independent of raw transcript retention — needed for `/weekly`/`/stats` (§3.4).
-- **Planned**: a visible privacy notice on the widget explaining what's stored and for how long.
 - No third-party sharing/selling of conversation data.
 
 > **Decision (resolved during scoping):** conversations *are* stored in full (not just metadata), with
@@ -103,7 +102,7 @@ the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's
 
 | Data | Retention | Notes |
 |---|---|---|
-| Conversation transcripts | 90 days, then hard-deleted | nightly purge job |
+| Conversation transcripts | 90 days, then hard-deleted | nightly `pg_cron` purge job |
 | Escalation + contact info (leads) | Kept indefinitely (it's a lead, not a transcript) | separate table, only populated if user opts in by leaving contact |
 | Aggregate usage stats (counts, tokens, cost) | Kept indefinitely | no PII, needed for trend reporting |
 
