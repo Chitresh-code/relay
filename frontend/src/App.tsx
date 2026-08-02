@@ -45,12 +45,14 @@ function App() {
         assistantText += event.text;
         addOrUpdate({ text: assistantText });
       } else if (event.type === "component") {
+        // hold the component until the text stream finishes, so it renders after the reply
+        // instead of popping in the moment the tool call fires (usually before any tokens).
         component = { tool: event.tool, content: event.content };
-        addOrUpdate({ component });
       } else if (event.type === "error") {
         addOrUpdate({ text: assistantText || `⚠ ${event.message}` });
       }
     }
+    if (component) addOrUpdate({ component });
     setIsTyping(false);
   }
 

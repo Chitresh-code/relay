@@ -13,7 +13,7 @@ flowchart TD
     Backend <--> Redis[("Upstash Redis<br/>rate limiting")]
     Backend -->|OpenAI-compatible API| OpenRouter["OpenRouter<br/>free-tier models"]
 
-    Backend -->|escalate()| TG["Telegram Bot API<br/>admin bot, webhook"]
+    Backend -->|"escalate()"| TG["Telegram Bot API<br/>admin bot, webhook"]
     TG -->|alert| Chitresh([Chitresh])
     Chitresh -->|reply| TG
     TG -->|forwarded via| Resend["Resend<br/>email to recruiter"]
@@ -81,6 +81,7 @@ Component set — these match the actual UI design (see §10), not a generic pla
 | `show_resume`     | resume view/download card       | `{name, format, updated, size, url}` — no-arg tool call; backend fills content from the real file (`app/knowledge.py:RESUME_INFO`), never the model, so the URL can't be hallucinated                                                                                                            |
 | `show_info`       | pull-quote card                 | `{quote}`                                                                                                                                                                                                                                                                                        |
 | `request_contact` | inline contact-capture form     | `{reason}` — ties into the `escalate()` flow in PRD §3.3                                                                                                                                                                                                                                         |
+| `search_context`  | *(none — not a UI tool)*        | `{query}` — cosine-searches admin-added notes (§6) and returns matches as text for the agent to answer with; can run alongside a UI tool in the same turn since it renders nothing itself                                                                                                      |
 
 
 Each tool's Pydantic arg schema is the SDK-enforced contract; the frontend switches on which tool
@@ -151,21 +152,31 @@ Client reads the stream with `fetch` + a `ReadableStream` reader (not `EventSour
 a POST body), parsing `event:`/`data:` lines manually. This is a well-understood ~30-line pattern, not
 worth pulling in an SSE client library for.
 
-## 6. Knowledge base — why no vector DB (yet)
+## 6. Knowledge base — static profile + a small notes RAG layer
 
 The corpus is `content/profile.md` — resume text plus a curated "about / FAQ" doc — realistically a
 few tens of KB. That fits comfortably in a single context window with room to spare. GitHub activity
 is not part of this static corpus; it's fetched live on demand (§3, `show_projects`) so it can't
-go stale. Adding embeddings + a vector store now would mean standing up and maintaining retrieval
-infra for a problem you don't have.
+go stale.
 
 **Configurability**: `content/profile.md`, `content/system_prompt.md`, and the resume PDF are the only
 person-specific inputs — swap those three plus the `CANDIDATE_NAME`/`GITHUB_USERNAME` env vars
 (§10) to point Relay at a different profile without touching app code.
 
-**Upgrade path if the KB grows** (many long docs, blog posts, case studies): Neon already supports the
-`pgvector` extension, so RAG can be added by embedding docs into the same Postgres instance — no new
-service, just a new table and a retrieval step before the agent call.
+**Context notes (admin Telegram bot)**: the profile is static, but things change faster than it gets
+rewritten (new role, new project, availability). `app/telegram_bot.py` long-polls Telegram for
+messages from a single admin `chat_id` (`TELEGRAM_ADMIN_CHAT_ID` — anyone else is ignored), rewrites
+each one into a clean note via one LLM call, and holds it pending until the admin replies "save" (or
+"cancel"). Saved notes go into `app/context_store.py`: a SQLite table (`backend/data/context.db`,
+gitignored) storing `(text, embedding)`. The `search_context` tool lets the agent embed the
+recruiter's question and cosine-match it against those notes before answering — a real RAG step, just
+without a dedicated vector DB: brute-force cosine over a Python list is fine at the scale of a
+personal notes table (dozens to low hundreds of rows).
+
+**Upgrade path if the notes table grows** (thousands of rows, this stops being "brute-force fast
+enough"): swap `context_store.py`'s scan for `sqlite-vec` or, if it's already moved to Postgres for
+other reasons (§8), `pgvector` — same `add_note`/`search_notes` interface, just a different backing
+store.
 
 ## 7. Observability — why no dedicated LLM ops platform (yet)
 

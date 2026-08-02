@@ -1,6 +1,10 @@
+import asyncio
+import contextlib
 import json
 import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -14,6 +18,7 @@ from pydantic import BaseModel
 
 from .agent import stream_reply
 from .knowledge import CONTENT_DIR
+from .telegram_bot import poll as telegram_poll
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
@@ -21,8 +26,19 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger("relay")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    task = asyncio.create_task(telegram_poll())
+    yield
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
 app = FastAPI(
     title="Relay",
+    lifespan=lifespan,
     # don't expose interactive API docs in production
     docs_url="/docs" if ENVIRONMENT != "production" else None,
     redoc_url="/redoc" if ENVIRONMENT != "production" else None,
