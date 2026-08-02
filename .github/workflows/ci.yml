@@ -22,6 +22,7 @@ jobs:
       - run: uv sync
       - run: uv run python -m tests.test_smoke
       - run: uv run python -m tests.test_context_store
+      - run: uv run python -m tests.test_mailer
 
   frontend:
     runs-on: ubuntu-latest

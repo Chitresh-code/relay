@@ -56,3 +56,11 @@ export async function* streamChat(sessionId: string, message: string): AsyncGene
     }
   }
 }
+
+export async function submitContact(sessionId: string, reason: string, email: string): Promise<void> {
+  await fetch(`${API_BASE}/contact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, reason, email }),
+  });
+}

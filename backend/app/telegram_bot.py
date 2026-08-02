@@ -61,6 +61,16 @@ async def _handle_message(client: httpx.AsyncClient, chat_id: int, text: str) ->
     )
 
 
+async def notify_admin(text: str) -> None:
+    """Fire-and-forget alert to the admin chat — used by the /contact escalation endpoint,
+    outside the polling loop's own client."""
+    if not BOT_TOKEN or not ADMIN_CHAT_ID:
+        logger.info("Telegram bot not configured — skipping admin notification")
+        return
+    async with httpx.AsyncClient(timeout=10) as client:
+        await _send(client, int(ADMIN_CHAT_ID), text)
+
+
 async def poll() -> None:
     """Long-polls Telegram for messages from the admin chat only, rewrites each one into a
     clean note via the LLM, and saves it (after confirmation) for search_context to retrieve.

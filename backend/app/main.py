@@ -18,6 +18,8 @@ from pydantic import BaseModel
 
 from .agent import stream_reply
 from .knowledge import CONTENT_DIR
+from .mailer import send_receipt_email
+from .telegram_bot import notify_admin
 from .telegram_bot import poll as telegram_poll
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
@@ -66,6 +68,12 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class ContactRequest(BaseModel):
+    session_id: str
+    reason: str
+    email: str = ""
+
+
 def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
@@ -87,6 +95,26 @@ async def chat(req: ChatRequest):
         yield sse("done", {})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.post("/contact")
+async def contact(req: ContactRequest):
+    """Escalation handoff from the request_contact UI card: alerts the admin on Telegram and,
+    if an email was left, sends the recruiter an immediate receipt via Resend."""
+    logger.info("contact request session=%s has_email=%s", req.session_id, bool(req.email))
+    history = _sessions.get(req.session_id, [])
+    last_question = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+
+    lines = [f"Escalation: {req.reason}"]
+    if last_question:
+        lines.append(f"Last question: {last_question}")
+    lines.append(f"Email: {req.email or '(not given)'}")
+    await notify_admin("\n".join(lines))
+
+    if req.email:
+        await send_receipt_email(req.email)
+
+    return {"status": "ok"}
 
 
 @app.get("/health")

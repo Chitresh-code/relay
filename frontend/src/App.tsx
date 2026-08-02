@@ -136,6 +136,7 @@ function App() {
       ) : (
         <ChatView
           t={t}
+          sessionId={sessionId}
           messages={messages}
           isTyping={isTyping}
           input={input}

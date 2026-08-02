@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Theme } from "../theme";
-import { API_BASE } from "../api";
+import { API_BASE, submitContact } from "../api";
 import type {
   ComponentPayload,
   ContactItem,
@@ -242,9 +242,7 @@ function InfoCardView({ t, quote }: { t: Theme; quote: string }) {
   );
 }
 
-// ponytail: submission just acks locally for now — wiring this to the escalate()/Telegram
-// flow is Phase 2 (ARCHITECTURE.md §3 request_contact, ROADMAP.md Phase 2).
-function RequestContactCardView({ t, reason }: { t: Theme; reason: string }) {
+function RequestContactCardView({ t, sessionId, reason }: { t: Theme; sessionId: string; reason: string }) {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -265,6 +263,7 @@ function RequestContactCardView({ t, reason }: { t: Theme; reason: string }) {
         onSubmit={(e) => {
           e.preventDefault();
           setSubmitted(true);
+          submitContact(sessionId, reason, email).catch(() => {});
         }}
         style={{ display: "flex", gap: 8 }}
       >
@@ -303,7 +302,7 @@ function RequestContactCardView({ t, reason }: { t: Theme; reason: string }) {
   );
 }
 
-export function ComponentCard({ t, payload }: { t: Theme; payload: ComponentPayload }) {
+export function ComponentCard({ t, sessionId, payload }: { t: Theme; sessionId: string; payload: ComponentPayload }) {
   switch (payload.tool) {
     case "show_skills":
       return <SkillsCard t={t} groups={payload.content.groups} />;
@@ -320,7 +319,9 @@ export function ComponentCard({ t, payload }: { t: Theme; payload: ComponentPayl
     case "show_info":
       return <InfoCardView t={t} quote={payload.content.quote} />;
     case "request_contact":
-      return <RequestContactCardView t={t} reason={(payload.content as RequestContactCard).reason} />;
+      return (
+        <RequestContactCardView t={t} sessionId={sessionId} reason={(payload.content as RequestContactCard).reason} />
+      );
     default:
       return null;
   }

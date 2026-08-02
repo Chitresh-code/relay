@@ -27,6 +27,10 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   to main directly" rule in CLAUDE.md enforced, not just convention.
 - CI: `.github/workflows/ci.yml` runs backend tests + frontend typecheck/build on every PR, both
   required as status checks on the `main` branch protection rule. See [[ARCHITECTURE.md]] §13.
+- Escalation handoff: submitting `request_contact` calls `POST /contact`, which alerts the admin on
+  Telegram and, if an email was given, sends the recruiter an immediate Resend receipt (HTML
+  template in `content/email_receipt.html`, same swap-the-file pattern as the profile/prompt).
+  Forwarding the admin's Telegram reply back to the recruiter is still planned — see below.
 
 ## Planned — roughly in build order
 
@@ -37,9 +41,8 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   serverless hosting without losing conversation history between requests.
 
 ### Escalation
-- `escalate()` tool + wiring `request_contact` (currently a local-only UI form) to actually send a
-  Telegram alert with question + conversation context + contact info.
-- Resend integration for reply-to-recruiter emails.
+- Forward the admin's Telegram reply back to the recruiter's email via Resend — the remaining piece
+  of the escalation loop (alert + receipt are shipped, see above).
 
 ### Governance & ops
 - Rate limiting: Upstash Redis, sliding window per session/IP on `/chat`. See [[ARCHITECTURE.md]] §9.
