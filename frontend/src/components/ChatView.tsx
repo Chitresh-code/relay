@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useRef } from "react";
+import { Streamdown } from "streamdown";
 import type { Theme } from "../theme";
 import type { ChatMessage } from "../types";
 import { ComponentCard } from "./ComponentCard";
@@ -106,7 +107,9 @@ export function ChatView({
             ) : (
               <div key={m.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {m.text && (
-                  <div style={{ font: "13.5px/1.6 system-ui,sans-serif", color: t.textBody }}>{m.text}</div>
+                  <div className="relay-markdown" style={{ color: t.textBody }}>
+                    <Streamdown>{m.text}</Streamdown>
+                  </div>
                 )}
                 {m.component && <ComponentCard t={t} payload={m.component} />}
               </div>

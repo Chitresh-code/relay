@@ -9,3 +9,18 @@ body,
 #root {
   height: 100%;
 }
+
+/* Streamdown ships its own prose styling; scope it back to match the terminal look. */
+.relay-markdown {
+  font: 13.5px/1.6 system-ui, -apple-system, sans-serif;
+}
+.relay-markdown > *:first-child {
+  margin-top: 0;
+}
+.relay-markdown > *:last-child {
+  margin-bottom: 0;
+}
+.relay-markdown code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9em;
+}

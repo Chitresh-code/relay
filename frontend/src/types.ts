@@ -1,5 +1,5 @@
 export type SkillGroup = { category: string; skills: string[] };
-export type ProjectItem = { title: string; year: string; description: string; tech: string[] };
+export type GithubRepoItem = { name: string; description: string; url: string; language: string; updated: string };
 export type ExperienceItem = { role: string; company: string; period: string; bullets: string[] };
 export type EducationItem = { degree: string; school: string; period: string };
 export type ContactItem = { label: string; value: string };

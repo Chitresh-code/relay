@@ -1,11 +1,12 @@
 import { useState } from "react";
 import type { Theme } from "../theme";
+import { API_BASE } from "../api";
 import type {
   ComponentPayload,
   ContactItem,
   EducationItem,
   ExperienceItem,
-  ProjectItem,
+  GithubRepoItem,
   RequestContactCard,
   ResumeCard,
   SkillGroup,
@@ -54,26 +55,41 @@ function SkillsCard({ t, groups }: { t: Theme; groups: SkillGroup[] }) {
   );
 }
 
-function ProjectsCard({ t, items }: { t: Theme; items: ProjectItem[] }) {
+function ProjectsCard({ t, items }: { t: Theme; items: GithubRepoItem[] }) {
+  if (items.length === 0) {
+    return (
+      <div style={cardStyle(t)}>
+        <div style={{ font: "13px system-ui,sans-serif", color: t.textMuted }}>
+          Couldn't load GitHub activity right now.
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {items.map((p) => (
-        <div key={p.title} style={cardStyle(t)}>
+      {items.map((r) => (
+        <a
+          key={r.url}
+          href={r.url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...cardStyle(t), display: "block", textDecoration: "none" }}
+        >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div style={{ font: "600 15px system-ui,sans-serif", color: t.textPrimary }}>{p.title}</div>
-            <div style={{ font: "11px 'JetBrains Mono',monospace", color: t.textMuted }}>{p.year}</div>
+            <div style={{ font: "600 14px 'JetBrains Mono',monospace", color: t.textPrimary }}>{r.name}</div>
+            <div style={{ font: "11px 'JetBrains Mono',monospace", color: t.textMuted }}>{r.updated}</div>
           </div>
-          <div style={{ font: "13px/1.55 system-ui,sans-serif", color: t.textBody, marginTop: 6 }}>
-            {p.description}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-            {p.tech.map((tc) => (
-              <span key={tc} style={tagStyle(t, true)}>
-                {tc}
-              </span>
-            ))}
-          </div>
-        </div>
+          {r.description && (
+            <div style={{ font: "13px/1.55 system-ui,sans-serif", color: t.textBody, marginTop: 6 }}>
+              {r.description}
+            </div>
+          )}
+          {r.language && (
+            <div style={{ marginTop: 10 }}>
+              <span style={tagStyle(t, true)}>{r.language}</span>
+            </div>
+          )}
+        </a>
       ))}
     </div>
   );
@@ -141,6 +157,7 @@ function ContactCard({ t, items }: { t: Theme; items: ContactItem[] }) {
 }
 
 function ResumeCardView({ t, resume }: { t: Theme; resume: ResumeCard }) {
+  const resolvedUrl = resume.url?.startsWith("http") ? resume.url : `${API_BASE}${resume.url ?? ""}`;
   return (
     <div style={{ ...cardStyle(t), display: "flex", alignItems: "center", gap: 14 }}>
       <div
@@ -167,23 +184,41 @@ function ResumeCardView({ t, resume }: { t: Theme; resume: ResumeCard }) {
           {resume.format} · updated {resume.updated} · {resume.size}
         </div>
       </div>
-      <a
-        href={resume.url ?? "#"}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          border: `1px solid ${t.accent}`,
-          background: "transparent",
-          color: t.accent,
-          cursor: "pointer",
-          font: "600 12px 'JetBrains Mono',monospace",
-          padding: "8px 14px",
-          borderRadius: 4,
-          textDecoration: "none",
-        }}
-      >
-        download
-      </a>
+      <div style={{ display: "flex", gap: 8 }}>
+        <a
+          href={resolvedUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            border: `1px solid ${t.panelBorder}`,
+            background: "transparent",
+            color: t.textBody,
+            cursor: "pointer",
+            font: "600 12px 'JetBrains Mono',monospace",
+            padding: "8px 14px",
+            borderRadius: 4,
+            textDecoration: "none",
+          }}
+        >
+          view
+        </a>
+        <a
+          href={resolvedUrl}
+          download={`${resume.name.replace(/\s+/g, "-")}-Resume.pdf`}
+          style={{
+            border: `1px solid ${t.accent}`,
+            background: "transparent",
+            color: t.accent,
+            cursor: "pointer",
+            font: "600 12px 'JetBrains Mono',monospace",
+            padding: "8px 14px",
+            borderRadius: 4,
+            textDecoration: "none",
+          }}
+        >
+          download
+        </a>
+      </div>
     </div>
   );
 }
