@@ -25,8 +25,8 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   §6.
 - GitHub branch protection on `main` (PR required, no force-push/deletion) — makes the "never commit
   to main directly" rule in CLAUDE.md enforced, not just convention.
-- CI: `.github/workflows/ci.yml` runs backend tests + frontend typecheck/build on every PR. See
-  [[ARCHITECTURE.md]] §13.
+- CI: `.github/workflows/ci.yml` runs backend tests + frontend typecheck/build on every PR, both
+  required as status checks on the `main` branch protection rule. See [[ARCHITECTURE.md]] §13.
 
 ## Planned — roughly in build order
 
@@ -49,13 +49,6 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
 - `usage_stats` logging + weekly digest, pushed automatically every Monday via GitHub Actions cron
   hitting an internal endpoint (needs an outbound Telegram call, so it can't be `pg_cron`-only).
 - Telegram bot slash commands: `/health`, `/stats`, `/weekly`. See [[ARCHITECTURE.md]] §14.
-
-### CI (mostly done)
-- ~~GitHub Actions workflow on every PR: backend tests + frontend typecheck/build.~~ Shipped —
-  `.github/workflows/ci.yml`.
-- Remaining: add both jobs as required status checks on the `main` branch protection rule (needs a
-  first CI run to reference by name) so a red PR can't merge, not just "shouldn't." See
-  [[ARCHITECTURE.md]] §13.
 
 ### Deploy
 - FastAPI Cloud (backend) + Vercel (frontend), both free tier.
