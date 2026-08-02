@@ -30,7 +30,7 @@ flowchart TD
 | Concern | Choice | Why |
 |---|---|---|
 | Agent runtime | OpenAI Agents SDK (Python) | requested; native structured-output support via `output_type`, native tool-calling for `escalate()` |
-| Model provider | **OpenRouter**, free-tier (`:free`) models | Agents SDK talks to any OpenAI-compatible endpoint — point its client at `https://openrouter.ai/api/v1` instead of OpenAI. Zero LLM cost; tradeoff is free-model rate limits and occasional availability changes, see §11 |
+| Model provider | **OpenRouter**, free-tier (`:free`) models | Agents SDK talks to any OpenAI-compatible endpoint. Configured via standard `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`OPENAI_RESPONSES_MODEL` env vars (defaulting to OpenRouter) so switching providers later is an env change, not a code change. Zero LLM cost today; tradeoff is free-model rate limits and occasional availability changes, see §11 |
 | Backend | FastAPI | requested; async, pairs naturally with Agents SDK, deploys to FastAPI Cloud |
 | Backend hosting | **FastAPI Cloud**, free tier | requested; purpose-built for FastAPI, avoids configuring a generic PaaS |
 | Frontend | Vite + React SPA (not Next.js) | it's a single chat page, not a multi-route site — a static SPA is less to configure/deploy than a framework with SSR you don't need |
