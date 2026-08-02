@@ -30,7 +30,15 @@ CREATE TABLE IF NOT EXISTS escalations (
 CREATE TABLE IF NOT EXISTS leads (
     id SERIAL PRIMARY KEY,
     escalation_id INTEGER NOT NULL REFERENCES escalations(id) ON DELETE CASCADE,
-    email TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+    email TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    telegram_message_id INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+-- CREATE TABLE IF NOT EXISTS above is a no-op on a table that already exists (even if it
+-- predates these columns) — ALTER ... ADD COLUMN IF NOT EXISTS is what actually keeps an
+-- existing `leads` table in Neon current with this schema.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER;
 """
 
 _pool: asyncpg.Pool | None = None

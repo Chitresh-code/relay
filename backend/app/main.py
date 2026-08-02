@@ -69,6 +69,7 @@ class ChatRequest(BaseModel):
 class ContactRequest(BaseModel):
     session_id: str
     reason: str
+    name: str = ""
     email: str = ""
 
 
@@ -108,13 +109,20 @@ async def contact(req: ContactRequest, request: Request):
     history = await get_history(req.session_id)
     summary = await summarize_for_admin(history, req.reason)
 
-    lines = [f"Escalation: {summary}", f"Email: {req.email or '(not given)'}"]
-    await notify_admin("\n".join(lines))
+    lines = [
+        f"Escalation: {summary}",
+        f"Session: {req.session_id}",
+        f"Name: {req.name or '(not given)'}",
+        f"Email: {req.email or '(not given)'}",
+    ]
+    if req.email:
+        lines.append("(Reply to this message to respond — it'll be emailed to them.)")
+    message_id = await notify_admin("\n".join(lines))
 
     escalation_id = await record_escalation(req.session_id, req.reason)
     if req.email:
-        await record_lead(escalation_id, req.email)
-        await send_receipt_email(req.email)
+        await record_lead(escalation_id, req.email, name=req.name, telegram_message_id=message_id)
+        await send_receipt_email(req.email, req.name)
 
     return {"status": "ok"}
 

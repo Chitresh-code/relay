@@ -18,8 +18,11 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   with no description).
 - Configurability: `content/profile.md`, `content/system_prompt.md`, resume PDF, and a handful of env
   vars are the only person-specific inputs — no hardcoded personal defaults in app code.
-- Admin Telegram bot (long-polling, single-`chat_id` auth): conversational note-taking, LLM rewrite +
-  confirm/cancel flow.
+- Admin Telegram bot (long-polling, single-`chat_id` auth), with a private admin agent
+  (`app/admin_agent.py`) the admin chats with directly: `save_note` (notes for the public agent),
+  `get_session_history` (pull a recruiter transcript by `session_id`), `send_email` (draft/send
+  outreach emails, resume attached). Replaced the old fixed rewrite/confirm/cancel flow with a
+  real conversation. See [[ARCHITECTURE.md]] §6.
 - `search_context` RAG tool over admin notes: Neon Postgres (`DATABASE_URL`) + OpenAI-compatible
   embeddings, brute-force cosine (small corpus, no vector index needed yet). See [[ARCHITECTURE.md]]
   §6.
@@ -27,12 +30,15 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   to main directly" rule in CLAUDE.md enforced, not just convention.
 - CI: `.github/workflows/ci.yml` runs backend tests + frontend typecheck/build on every PR, both
   required as status checks on the `main` branch protection rule. See [[ARCHITECTURE.md]] §13.
-- Escalation handoff: submitting `request_contact` calls `POST /contact`, which alerts the admin on
-  Telegram with an LLM-generated summary of what the recruiter wants (`summarize_for_admin` in
-  `app/agent.py`, falls back to the raw escalation reason on any failure) and, if an email was
-  given, sends the recruiter an immediate Resend receipt (HTML template in
-  `content/email_receipt.html`, same swap-the-file pattern as the profile/prompt). Forwarding the
-  admin's Telegram reply back to the recruiter is still planned — see below.
+- Escalation handoff, full loop: submitting `request_contact` (now collecting name + email) calls
+  `POST /contact`, which alerts the admin on Telegram with an LLM-generated summary of what the
+  recruiter wants (`summarize_for_admin` in `app/agent.py`, falls back to the raw escalation
+  reason on any failure) and, if an email was given, sends the recruiter an immediate receipt via
+  Resend — personally worded and signed, resume PDF attached (`content/email_receipt.html`, same
+  swap-the-file pattern as the profile/prompt). Replying to that Telegram alert forwards the
+  admin's actual reply to the recruiter's email (also resume-attached, `content/email_reply.html`)
+  — the message-to-lead mapping lives in `leads.telegram_message_id`, see
+  `app/telegram_bot.py:poll`/`app/sessions.py:get_lead_by_message_id`.
 - Rate limiting: `POST /chat` and `POST /contact` capped per client IP over any REST-compatible
   Redis (fails open if unconfigured or on Redis errors). See [[ARCHITECTURE.md]] §9.
 - Data model + sessions (Neon): `conversations`, `messages`, `escalations`, `leads` tables, one
@@ -43,10 +49,6 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   consumer yet). See [[ARCHITECTURE.md]] §4/§8.
 
 ## Planned — roughly in build order
-
-### Escalation
-- Forward the admin's Telegram reply back to the recruiter's email via Resend — the remaining piece
-  of the escalation loop (alert + receipt are shipped, see above).
 
 ### Governance & ops
 - Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed) +

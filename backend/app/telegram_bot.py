@@ -4,8 +4,9 @@ import os
 
 import httpx
 
-from .agent import MODEL_NAME, _client, _embed
-from .context_store import add_note
+from .admin_agent import run_admin_agent
+from .mailer import send_reply_email
+from .sessions import get_lead_by_message_id
 
 logger = logging.getLogger("relay.telegram")
 
@@ -13,68 +14,43 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 ADMIN_CHAT_ID = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-_REWRITE_PROMPT = (
-    "Rewrite the following note into a single clear, well-formed sentence or short paragraph, "
-    "suitable for grounding an AI assistant that answers recruiter questions about this "
-    "person. Keep every fact, don't invent anything new. Reply with only the rewritten note."
-)
+ADMIN_HISTORY_WINDOW = 20
 
-# ponytail: single admin, one conversation at a time -> an in-memory pending-draft dict is
-# enough, no sessions table needed.
-_pending: dict[int, str] = {}
+# ponytail: single admin, single chat -> an in-memory per-process conversation is enough, no
+# sessions table needed. Lost on restart; that's fine for a scratchpad chat with the admin agent.
+_admin_history: dict[int, list[dict[str, str]]] = {}
 
 
-async def _rewrite(raw: str) -> str:
-    resp = await _client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[{"role": "system", "content": _REWRITE_PROMPT}, {"role": "user", "content": raw}],
-        max_tokens=200,
-    )
-    return (resp.choices[0].message.content or raw).strip()
-
-
-async def _send(client: httpx.AsyncClient, chat_id: int, text: str) -> None:
-    await client.post(f"{API}/sendMessage", json={"chat_id": chat_id, "text": text})
+async def _send(client: httpx.AsyncClient, chat_id: int, text: str) -> int | None:
+    resp = await client.post(f"{API}/sendMessage", json={"chat_id": chat_id, "text": text})
+    return resp.json().get("result", {}).get("message_id")
 
 
 async def _handle_message(client: httpx.AsyncClient, chat_id: int, text: str) -> None:
-    pending = _pending.get(chat_id)
-    lowered = text.strip().lower()
-
-    if pending and lowered in {"save", "yes", "confirm", "ok"}:
-        await add_note(pending, embed=_embed)
-        del _pending[chat_id]
-        await _send(client, chat_id, "Saved.")
-        return
-
-    if pending and lowered in {"cancel", "no", "discard"}:
-        del _pending[chat_id]
-        await _send(client, chat_id, "Discarded.")
-        return
-
-    draft = await _rewrite(text)
-    _pending[chat_id] = draft
-    await _send(
-        client,
-        chat_id,
-        f'{draft}\n\n— reply "save" to confirm, send corrections to revise, or "cancel" to discard.',
-    )
+    history = _admin_history.setdefault(chat_id, [])
+    history.append({"role": "user", "content": text})
+    reply = await run_admin_agent(history[-ADMIN_HISTORY_WINDOW:])
+    history.append({"role": "assistant", "content": reply})
+    await _send(client, chat_id, reply)
 
 
-async def notify_admin(text: str) -> None:
+async def notify_admin(text: str) -> int | None:
     """Fire-and-forget alert to the admin chat — used by the /contact escalation endpoint,
-    outside the polling loop's own client."""
+    outside the polling loop's own client. Returns the sent message_id (or None if unconfigured)
+    so the caller can remember it against the lead — that's how a later reply gets forwarded."""
     if not BOT_TOKEN or not ADMIN_CHAT_ID:
         logger.info("Telegram bot not configured — skipping admin notification")
-        return
+        return None
     async with httpx.AsyncClient(timeout=10) as client:
-        await _send(client, int(ADMIN_CHAT_ID), text)
+        return await _send(client, int(ADMIN_CHAT_ID), text)
 
 
 async def poll() -> None:
-    """Long-polls Telegram for messages from the admin chat only, rewrites each one into a
-    clean note via the LLM, and saves it (after confirmation) for search_context to retrieve.
-    Long-polling avoids needing a public webhook URL for a single-admin bot."""
+    """Long-polls Telegram for messages from the admin chat only. A reply to an escalation alert
+    is forwarded to the recruiter's email (see notify_admin/get_lead_by_message_id); anything else
+    goes to the admin agent (app/admin_agent.py) — a chat that can save notes, look up a recruiter
+    session's history, and draft/send outreach emails. Long-polling avoids needing a public
+    webhook URL for a single-admin bot."""
     if not BOT_TOKEN or not ADMIN_CHAT_ID:
         logger.info("Telegram bot not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_ADMIN_CHAT_ID unset) — skipping.")
         return
@@ -95,6 +71,14 @@ async def poll() -> None:
                     if str(chat_id) != str(ADMIN_CHAT_ID):
                         logger.warning("Ignoring Telegram message from unauthorized chat_id=%s", chat_id)
                         continue
+
+                    reply_to = message.get("reply_to_message", {}).get("message_id")
+                    lead = await get_lead_by_message_id(reply_to) if reply_to else None
+                    if lead:
+                        await send_reply_email(lead["email"], text, lead["name"])
+                        await _send(client, chat_id, f"Forwarded to {lead['email']}.")
+                        continue
+
                     await _handle_message(client, chat_id, text)
             except asyncio.CancelledError:
                 raise
