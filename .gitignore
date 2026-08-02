@@ -9,6 +9,9 @@ __pycache__/
 venv/
 *.egg-info/
 
+# Runtime data (context notes DB — personal, per-deployment)
+backend/data/
+
 # Node
 node_modules/
 dist/

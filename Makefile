@@ -18,7 +18,7 @@ frontend:
 	cd frontend && npm run dev
 
 test:
-	cd backend && uv run python -m tests.test_smoke
+	cd backend && uv run python -m tests.test_smoke && uv run python -m tests.test_context_store
 
 build:
 	cd frontend && npm run build

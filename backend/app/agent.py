@@ -6,6 +6,7 @@ from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from .context_store import search_notes
 from .github import fetch_recent_repos
 from .knowledge import PROFILE, RESUME_INFO, SYSTEM_PROMPT_TEMPLATE
 
@@ -15,6 +16,10 @@ from .knowledge import PROFILE, RESUME_INFO, SYSTEM_PROMPT_TEMPLATE
 BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
 MODEL_NAME = os.environ.get("OPENAI_RESPONSES_MODEL", "openrouter/free")
 AGENT_NAME = os.environ.get("AGENT_NAME", "Relay")
+# OpenRouter doesn't host its own free embedding model — this defaults to an OpenAI model
+# behind the same OPENAI_BASE_URL/OPENAI_API_KEY, so point those at a provider that serves it
+# (or override this) if you're staying on OpenRouter's free chat tier for everything else.
+EMBED_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "openai/text-embedding-3-small")
 
 _client = AsyncOpenAI(base_url=BASE_URL, api_key=os.environ["OPENAI_API_KEY"])
 set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not relevant off-OpenAI
@@ -40,6 +45,12 @@ async def _describe_from_readme(readme_text: str) -> str:
         max_tokens=60,
     )
     return (resp.choices[0].message.content or "").strip()
+
+
+async def _embed(text: str) -> list[float]:
+    resp = await _client.embeddings.create(model=EMBED_MODEL, input=text)
+    return resp.data[0].embedding
+
 
 UI_TOOL_NAMES = {
     "show_skills",
@@ -124,6 +135,15 @@ def request_contact(reason: str) -> str:
     return "Requested."
 
 
+@function_tool
+async def search_context(query: str) -> str:
+    """Look up notes added via the admin Telegram bot — info newer than the static profile
+    (role changes, new projects, availability). Not a UI tool: nothing is shown to the
+    recruiter for this call, it only feeds you more information before you answer."""
+    notes = await search_notes(query, embed=_embed)
+    return "\n".join(f"- {n}" for n in notes) if notes else "No additional notes found."
+
+
 SYSTEM_PROMPT = SYSTEM_PROMPT_TEMPLATE.replace("{agent_name}", AGENT_NAME).replace("{profile}", PROFILE)
 
 agent = Agent(
@@ -139,6 +159,7 @@ agent = Agent(
         show_resume,
         show_info,
         request_contact,
+        search_context,
     ],
 )
 

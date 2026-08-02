@@ -20,9 +20,14 @@ Backend needs a `.env` in `backend/` (copy `backend/.env.example`) — at minimu
 
 Other useful targets: `make backend`, `make frontend`, `make test`, `make build`.
 
+Optional: to keep Relay current between profile rewrites, set `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_ADMIN_CHAT_ID` in `backend/.env` — chat with the bot to add notes (it rewrites each
+one and asks you to confirm before saving), and the agent retrieves them on demand via
+`search_context`. See [ARCHITECTURE.md §6](docs/ARCHITECTURE.md). Left unset, this is a no-op.
+
 ## Structure
 
-- `backend/` — FastAPI + OpenAI Agents SDK, `/chat` SSE endpoint
+- `backend/` — FastAPI + OpenAI Agents SDK, `/chat` SSE endpoint, admin Telegram bot
 - `frontend/` — Vite + React + TypeScript SPA
 
 ## Making it yours
