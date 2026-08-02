@@ -52,19 +52,20 @@ kept here only as the original ask for context).
 ```
 
 ### 3.3 Human escalation (fallback to Telegram)
-**Status: not yet built** — `request_contact` (the tool implementing this) currently only shows a
-local contact-capture form in the UI; it doesn't send anything to Telegram or Resend yet. See
-[[ROADMAP.md]].
+**Status: partially built** — steps 1 and 2 below are shipped; step 3 (forwarding the admin's
+Telegram reply back to the recruiter) is still planned. See [[ROADMAP.md]].
 
-The agent has an `escalate` tool it calls when: the question is outside the knowledge base, the
-recruiter explicitly asks to talk to the profile owner, or there's clear hiring intent worth a
-personal response. On escalation:
-1. Agent tells the user it's looping the profile owner in, and renders `contact_form` to collect an
-   email (optional but encouraged — without it, the profile owner can't respond back).
-2. A message is sent to the admin's Telegram with the question, conversation context, and contact
-   info if given.
-3. The admin can reply from Telegram; if the user left an email, the reply is sent to them (via
-   Resend).
+The agent calls `request_contact` when: the question is outside the knowledge base, the recruiter
+explicitly asks to talk to the profile owner, or there's clear hiring intent worth a personal
+response. There's no separate `escalate` tool — `request_contact` renders the card, and submitting
+it is what actually escalates:
+1. Agent tells the user it's looping the profile owner in, and renders `request_contact` to collect
+   an email (optional but encouraged — without it, the profile owner can't respond back).
+2. **Shipped:** submitting the form (`POST /contact`) sends the admin a Telegram alert with the
+   question, conversation context, and contact info if given; if an email was left, the recruiter
+   gets an immediate receipt via Resend confirming it was received.
+3. **Planned:** the admin replies from Telegram, and that reply is forwarded to the recruiter's
+   email (via Resend) as the actual personal response.
 
 ### 3.4 Telegram as admin interface
 The admin's Telegram bot (a *second*, private bot — the user-facing web widget is not on Telegram) is

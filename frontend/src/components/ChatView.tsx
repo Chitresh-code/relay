@@ -27,6 +27,7 @@ function TypingIndicator({ t }: { t: Theme }) {
 
 export function ChatView({
   t,
+  sessionId,
   messages,
   isTyping,
   input,
@@ -35,6 +36,7 @@ export function ChatView({
   onReset,
 }: {
   t: Theme;
+  sessionId: string;
   messages: ChatMessage[];
   isTyping: boolean;
   input: string;
@@ -120,7 +122,7 @@ export function ChatView({
                     <Streamdown>{m.text}</Streamdown>
                   </div>
                 )}
-                {m.component && <ComponentCard t={t} payload={m.component} />}
+                {m.component && <ComponentCard t={t} sessionId={sessionId} payload={m.component} />}
               </div>
             ),
           )}
