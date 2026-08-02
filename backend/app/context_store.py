@@ -1,39 +1,14 @@
-import asyncio
 import logging
-import os
 from collections.abc import Awaitable, Callable
 
-import asyncpg
+from .db import get_pool as _get_pool
 
 logger = logging.getLogger("relay.context_store")
 
 # Neon Postgres, not SQLite — FastAPI Cloud/Vercel are serverless, so a local file wouldn't
 # persist (or be shared) across instances. Unset -> notes are silently dropped/empty instead
 # of crashing, same graceful-disable pattern as the Telegram bot when its token is unset.
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-
 EmbedFn = Callable[[str], Awaitable[list[float]]]
-
-_pool: asyncpg.Pool | None = None
-_pool_lock = asyncio.Lock()
-
-
-async def _get_pool() -> asyncpg.Pool | None:
-    global _pool
-    if not DATABASE_URL:
-        return None
-    if _pool is None:
-        async with _pool_lock:
-            if _pool is None:  # re-check: another task may have created it while we waited
-                _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=3)
-                async with _pool.acquire() as conn:
-                    await conn.execute(
-                        "CREATE TABLE IF NOT EXISTS notes ("
-                        "id SERIAL PRIMARY KEY, text TEXT NOT NULL, "
-                        "embedding DOUBLE PRECISION[] NOT NULL, "
-                        "created_at TIMESTAMPTZ NOT NULL DEFAULT now())"
-                    )
-    return _pool
 
 
 def _cosine(a: list[float], b: list[float]) -> float:

@@ -78,11 +78,13 @@ the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's
   conversation recap), and real-time escalation alerts (§3.3).
 
 ### 3.5 Observability & governance
-- **Conversations are stored** (resolved: see decision below) in Postgres with a disclosed retention
-  window, so Telegram-based summaries and digests are possible.
-- Aggregate usage stats (requests, tokens, estimated cost, unique sessions/day) tracked regardless,
-  independent of raw transcript retention.
-- A visible privacy notice on the widget explaining what's stored and for how long.
+**Status: partially built** — see [[ROADMAP.md]].
+- **Shipped: conversations are stored** in Postgres (`app/sessions.py`), plus escalations and leads
+  (§4). Retention window below is the intended policy; the purge job that enforces it is still
+  planned, as is the privacy notice disclosing it.
+- **Planned**: aggregate usage stats (requests, tokens, estimated cost, unique sessions/day),
+  independent of raw transcript retention — needed for `/weekly`/`/stats` (§3.4).
+- **Planned**: a visible privacy notice on the widget explaining what's stored and for how long.
 - No third-party sharing/selling of conversation data.
 
 > **Decision (resolved during scoping):** conversations *are* stored in full (not just metadata), with

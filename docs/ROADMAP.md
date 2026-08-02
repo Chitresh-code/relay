@@ -35,14 +35,14 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   admin's Telegram reply back to the recruiter is still planned — see below.
 - Rate limiting: `POST /chat` and `POST /contact` capped per client IP over any REST-compatible
   Redis (fails open if unconfigured or on Redis errors). See [[ARCHITECTURE.md]] §9.
+- Data model + sessions (Neon): `conversations`, `messages`, `escalations`, `leads` tables, one
+  shared pool (`app/db.py`). `app/main.py`'s in-memory `_sessions` dict is gone — history now lives
+  in `app/sessions.py`, backed by Postgres with an in-memory-per-process fallback when
+  `DATABASE_URL` is unset (local dev). `/contact` now records an `escalations` row per submission
+  and a `leads` row when an email is given. `usage_stats` deferred to Governance & ops below (no
+  consumer yet). See [[ARCHITECTURE.md]] §4/§8.
 
 ## Planned — roughly in build order
-
-### Data model + sessions (Neon)
-- `conversations`, `messages`, `escalations`, `leads`, `usage_stats` tables (same Neon project the
-  notes table already lives in — no new database). See [[ARCHITECTURE.md]] §8.
-- Move `app/main.py`'s in-memory `_sessions` dict onto `messages` — required before this can run on
-  serverless hosting without losing conversation history between requests.
 
 ### Escalation
 - Forward the admin's Telegram reply back to the recruiter's email via Resend — the remaining piece
@@ -51,8 +51,9 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
 ### Governance & ops
 - Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed) +
   privacy notice on the widget. See [[ARCHITECTURE.md]] §12.
-- `usage_stats` logging + weekly digest, pushed automatically every Monday via GitHub Actions cron
-  hitting an internal endpoint (needs an outbound Telegram call, so it can't be `pg_cron`-only).
+- `usage_stats` table + logging + weekly digest, pushed automatically every Monday via GitHub
+  Actions cron hitting an internal endpoint (needs an outbound Telegram call, so it can't be
+  `pg_cron`-only).
 - Telegram bot slash commands: `/health`, `/stats`, `/weekly`. See [[ARCHITECTURE.md]] §14.
 
 ### Deploy
