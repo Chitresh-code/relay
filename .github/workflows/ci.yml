@@ -23,6 +23,7 @@ jobs:
       - run: uv run python -m tests.test_smoke
       - run: uv run python -m tests.test_context_store
       - run: uv run python -m tests.test_mailer
+      - run: uv run python -m tests.test_rate_limit
 
   frontend:
     runs-on: ubuntu-latest

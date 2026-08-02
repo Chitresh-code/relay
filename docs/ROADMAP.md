@@ -31,6 +31,8 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   Telegram and, if an email was given, sends the recruiter an immediate Resend receipt (HTML
   template in `content/email_receipt.html`, same swap-the-file pattern as the profile/prompt).
   Forwarding the admin's Telegram reply back to the recruiter is still planned — see below.
+- Rate limiting: `POST /chat` and `POST /contact` capped per client IP over any REST-compatible
+  Redis (fails open if unconfigured or on Redis errors). See [[ARCHITECTURE.md]] §9.
 
 ## Planned — roughly in build order
 
@@ -45,8 +47,6 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   of the escalation loop (alert + receipt are shipped, see above).
 
 ### Governance & ops
-- Rate limiting: Upstash Redis, sliding window per session/IP on `/chat`. See [[ARCHITECTURE.md]] §9.
-  Highest priority of what's left — the public endpoint currently has zero throttling.
 - Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed) +
   privacy notice on the widget. See [[ARCHITECTURE.md]] §12.
 - `usage_stats` logging + weekly digest, pushed automatically every Monday via GitHub Actions cron
