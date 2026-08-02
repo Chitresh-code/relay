@@ -20,7 +20,7 @@ from .agent import stream_reply, summarize_for_admin
 from .knowledge import CONTENT_DIR
 from .mailer import send_receipt_email
 from .rate_limit import check_rate_limit, client_ip
-from .sessions import append_message, get_history, record_escalation, record_lead
+from .sessions import append_message, get_history, purge_old_messages, record_escalation, record_lead
 from .telegram_bot import build_weekly_digest, notify_admin
 from .telegram_bot import poll as telegram_poll
 
@@ -143,3 +143,17 @@ async def internal_weekly_digest(request: Request):
         raise HTTPException(status_code=404)
     await notify_admin(await build_weekly_digest())
     return {"status": "ok"}
+
+
+@app.post("/internal/retention-purge")
+async def internal_retention_purge(request: Request):
+    """Hit by the GitHub Actions cron (.github/workflows/retention-purge.yml) daily to enforce
+    the 90-day transcript retention window (PRD §4). Replaces the earlier pg_cron approach — that
+    needed CREATE EXTENSION/cron.schedule, which not every Neon DATABASE_URL role grants; this
+    runs as a normal app request instead. Same 404-not-401 graceful-disable pattern as the weekly
+    digest endpoint above, guarded by the same INTERNAL_API_KEY."""
+    if not INTERNAL_API_KEY or request.headers.get("X-Internal-Key") != INTERNAL_API_KEY:
+        raise HTTPException(status_code=404)
+    deleted = await purge_old_messages()
+    logger.info("retention purge deleted=%d", deleted)
+    return {"status": "ok", "deleted": deleted}

@@ -82,6 +82,21 @@ async def record_lead(
         )
 
 
+async def purge_old_messages(days: int = 90) -> int:
+    """Retention purge (PRD §4/ARCHITECTURE §12): deletes transcripts older than `days`.
+    Triggered by GitHub Actions (POST /internal/retention-purge), not pg_cron — pg_cron needs a
+    privileged Neon role not every DATABASE_URL grants. escalations/leads are untouched (they're
+    leads, not transcripts). No-op (returns 0) when Postgres isn't configured."""
+    pool = await get_pool()
+    if pool is None:
+        return 0
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM messages WHERE created_at < now() - make_interval(days => $1)", days
+        )
+    return int(result.split()[-1])
+
+
 async def get_recent_user_messages(days: int, limit: int = 150) -> list[str]:
     """Recruiter questions from the trailing `days` — feeds the weekly digest's LLM topic
     summary (app/agent.py:summarize_weekly_topics). Empty list, not an error, when Postgres
