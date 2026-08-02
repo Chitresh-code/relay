@@ -1,14 +1,8 @@
 import json
 import os
 
-from agents import (
-    Agent,
-    Runner,
-    function_tool,
-    set_default_openai_api,
-    set_default_openai_client,
-    set_tracing_disabled,
-)
+from agents import Agent, Runner, function_tool, set_tracing_disabled
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -18,12 +12,15 @@ from .knowledge import PROFILE
 # free tier now, straight OpenAI or anything else OpenAI-compatible later) is just an env var
 # change, no code change. Defaults point at OpenRouter's free tier.
 BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
-MODEL = os.environ.get("OPENAI_RESPONSES_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+MODEL_NAME = os.environ.get("OPENAI_RESPONSES_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
 _client = AsyncOpenAI(base_url=BASE_URL, api_key=os.environ["OPENAI_API_KEY"])
-set_default_openai_client(_client)
-set_default_openai_api("chat_completions")  # widest compatibility across OpenAI-compatible providers
 set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not relevant off-OpenAI
+
+# Built directly against our client (not agents.Agent(model=<string>)): the SDK's default
+# MultiProvider splits bare model strings on "/" as a provider prefix, which misreads
+# OpenRouter ids like "meta-llama/llama-3.3-70b-instruct:free" as prefix "meta-llama".
+MODEL = OpenAIChatCompletionsModel(model=MODEL_NAME, openai_client=_client)
 
 UI_TOOL_NAMES = {
     "show_skills",
