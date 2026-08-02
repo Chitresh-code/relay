@@ -264,11 +264,11 @@ endpoint — unless a later Neon feature adds outbound HTTP from scheduled queri
 
 ## 13. CI
 
-**Status: not yet built.** No `.github/workflows/` yet, so nothing currently blocks a broken commit
-from landing on `main` beyond GitHub branch protection requiring a PR (see CLAUDE.md's git workflow).
-Planned: a workflow on every PR running `make test` (backend) and `npx tsc --noEmit` (frontend);
-add it as a required status check on the `main` branch protection rule once it exists so a red PR
-literally can't merge, not just "shouldn't."
+**Shipped.** `.github/workflows/ci.yml` runs on every PR and push to `main`: backend job (`uv sync` +
+`tests.test_smoke` + `tests.test_context_store`) and frontend job (`tsc --noEmit` + `npm run build`).
+Once it's run at least once, add both jobs as required status checks on the `main` branch protection
+rule so a red PR literally can't merge, not just "shouldn't" — not done yet, needs a first run to
+reference by name.
 
 ## 14. Telegram bot commands
 
