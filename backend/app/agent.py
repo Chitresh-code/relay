@@ -2,9 +2,11 @@ import json
 import logging
 import os
 
-from agents import Agent, Runner, function_tool, set_tracing_disabled
+from agents import Agent, ModelSettings, Runner, function_tool, set_tracing_disabled
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from openai import AsyncOpenAI
+from agents.models.openai_responses import OpenAIResponsesModel
+from openai import AsyncOpenAI, RateLimitError
+from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
 from .context_store import search_notes
@@ -21,6 +23,13 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "Relay")
 # behind the same OPENAI_BASE_URL/OPENAI_API_KEY, so point those at a provider that serves it
 # (or override this) if you're staying on OpenRouter's free chat tier for everything else.
 EMBED_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "openai/text-embedding-3-small")
+# gpt-5/o-series reasoning models only support reasoning_effort above "none" together with
+# function tools on the Responses API (/v1/responses) — Chat Completions has no way to carry
+# reasoning state across a tool round-trip, so it rejects anything but "none" once tools are
+# attached. OPENAI_API_STYLE picks which endpoint the Agents SDK talks to; defaults to
+# chat_completions since that's what OpenRouter (and most non-OpenAI-official endpoints) serve.
+REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT", "")
+API_STYLE = os.environ.get("OPENAI_API_STYLE", "chat_completions")
 
 logger = logging.getLogger("relay.agent")
 
@@ -30,7 +39,10 @@ set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not rel
 # Built directly against our client (not agents.Agent(model=<string>)): the SDK's default
 # MultiProvider splits bare model strings on "/" as a provider prefix, which misreads
 # OpenRouter ids like "meta-llama/llama-3.3-70b-instruct:free" as prefix "meta-llama".
-MODEL = OpenAIChatCompletionsModel(model=MODEL_NAME, openai_client=_client)
+_ModelClass = OpenAIResponsesModel if API_STYLE == "responses" else OpenAIChatCompletionsModel
+MODEL = _ModelClass(model=MODEL_NAME, openai_client=_client)
+
+MODEL_SETTINGS = ModelSettings(reasoning=Reasoning(effort=REASONING_EFFORT)) if REASONING_EFFORT else None
 
 
 async def _describe_from_readme(readme_text: str) -> str:
@@ -77,6 +89,9 @@ async def summarize_for_admin(history: list[dict[str, str]], reason: str) -> str
             max_tokens=150,
         )
         return (resp.choices[0].message.content or reason).strip()
+    except RateLimitError:
+        logger.warning("Model rate limit hit — falling back to raw reason")
+        return reason
     except Exception:
         logger.exception("Admin summary generation failed — falling back to raw reason")
         return reason
@@ -176,6 +191,8 @@ async def search_context(query: str) -> str:
 
 SYSTEM_PROMPT = SYSTEM_PROMPT_TEMPLATE.replace("{agent_name}", AGENT_NAME).replace("{profile}", PROFILE)
 
+_agent_kwargs = {"model_settings": MODEL_SETTINGS} if MODEL_SETTINGS else {}
+
 agent = Agent(
     name=AGENT_NAME,
     instructions=SYSTEM_PROMPT,
@@ -191,6 +208,7 @@ agent = Agent(
         request_contact,
         search_context,
     ],
+    **_agent_kwargs,
 )
 
 
@@ -231,5 +249,9 @@ async def stream_reply(history: list[dict[str, str]]):
                         except json.JSONDecodeError:
                             args = {}
                         yield "component", {"tool": name, "content": args}
-    except Exception as exc:  # free-tier rate limits, model hiccups, etc. — surface, don't crash
+    except RateLimitError:
+        logger.warning("Model rate limit hit")
+        yield "error", {"message": "Getting a lot of requests right now — try again in a minute."}
+    except Exception as exc:  # model hiccups, etc. — surface, don't crash
+        logger.exception("stream_reply failed")
         yield "error", {"message": str(exc)}
