@@ -3,6 +3,7 @@ import { useState } from "react";
 import { streamChat } from "./api";
 import { ChatView } from "./components/ChatView";
 import { Landing } from "./components/Landing";
+import { NotFound } from "./components/NotFound";
 import { getSessionId, newSessionId } from "./session";
 import { darkTheme, lightTheme } from "./theme";
 import type { ChatMessage, ComponentPayload } from "./types";
@@ -132,7 +133,9 @@ function App() {
         </button>
       </div>
 
-      {view === "landing" ? (
+      {window.location.pathname !== "/" ? (
+        <NotFound t={t} path={window.location.pathname} />
+      ) : view === "landing" ? (
         <Landing t={t} input={input} onInputChange={setInput} onSubmit={handleSubmit} onPrompt={handlePrompt} />
       ) : (
         <ChatView
