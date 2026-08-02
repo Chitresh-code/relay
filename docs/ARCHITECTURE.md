@@ -91,11 +91,12 @@ fired to pick a renderer (`src/components/ComponentCard.tsx` — see the fronten
 
 ## 4. Session & memory model
 
-**Status: Postgres persistence below is planned, not built.** `app/main.py:_sessions` is currently an
-in-memory `dict[session_id, messages]` — fine for one local dev process, but it resets on every
-restart/redeploy and isn't shared across instances, so it won't survive serverless hosting. The
-`conversations`/`messages` tables (§8) are what closes that gap; until then, the window/identity
-behavior below already works, the durable-storage/digest/retention parts don't.
+**Status: shipped.** Chat history is written to Neon Postgres per-message (`app/sessions.py`,
+`conversations`/`messages` tables, §8) — full transcript, not just the replayed window. If
+`DATABASE_URL` is unset, `app/sessions.py` falls back to an in-memory `dict[session_id, messages]`
+(same graceful-disable pattern as `context_store.py`/`mailer.py`/`rate_limit.py`) so local dev keeps
+working without Postgres — it just resets on restart and isn't shared across instances, same
+limitation the old always-in-memory version had everywhere.
 
 Deliberately not a multi-thread chat product — one active conversation at a time, no thread list/
 switcher UI. Simpler to build, and matches how a recruiter actually uses this (one sitting, a handful
@@ -103,16 +104,17 @@ of questions).
 
 - **Identity**: client generates a `session_id` (`crypto.randomUUID()`) on first load, stored in
 `localStorage`. Sent with every `/chat` call. No auth, no cookies needed.
-- **Context window**: backend loads the **last 10-12 messages** for that `session_id` (currently the
-in-memory dict; Postgres once §8 lands) and sends only that window to the model. This bounds prompt
-size/cost regardless of how long a conversation runs.
-- **Storage vs. context are different things**: once §8 lands, the *full* transcript will be written
-to Postgres per-message (needed for the weekly digest and the 90-day-retention transcript store from
-PRD §4) — the 10-12 window only bounds what's replayed *to the model*, not what's kept.
+- **Context window**: backend loads the **full stored history** for that `session_id` and sends only
+the **last 10-12 messages** (`HISTORY_WINDOW`) to the model. This bounds prompt size/cost regardless
+of how long a conversation runs.
+- **Storage vs. context are different things**: the full transcript is kept in Postgres (needed for
+the weekly digest and the 90-day-retention transcript store from PRD §4, both still planned — the
+purge job itself hasn't been built yet, see [[ROADMAP.md]]) — the 10-12 window only bounds what's
+replayed *to the model*, not what's kept.
 - **New chat**: a visible reset control rotates `session_id` (new UUID, old one abandoned) and clears
 the visible message list client-side. The old conversation isn't deleted — it just ages out under
-the normal retention job. No backend call needed to "start" a new chat; the next `/chat` request
-with the new `session_id` lazily creates a new `conversations` row.
+the normal retention job once that's built. No backend call needed to "start" a new chat; the next
+`/chat` request with the new `session_id` lazily creates a new `conversations` row.
 
 
 
@@ -150,7 +152,7 @@ sequenceDiagram
         M-->>B: tool call complete (e.g. show_projects)
         B-->>U: SSE event: component
     end
-    B->>B: persist user + assistant messages (Postgres — planned, §8; in-memory dict today)
+    B->>B: persist user + assistant messages (Postgres, §8 — in-memory fallback if DATABASE_URL unset)
     B-->>U: SSE event: done
 ```
 
@@ -200,17 +202,26 @@ touching the data model above.
 
 ## 8. Data model (minimum viable)
 
-**Status: not yet built.** Only `notes(id, text, embedding, created_at)` (§6) exists in Neon today.
-Sessions currently live in an in-memory dict (`app/main.py:_sessions`) — fine for one dev process, but
-it resets on every restart/redeploy and won't be shared across instances on serverless hosting, which
-is exactly the problem that pushed `notes` onto Neon (§6). Planned tables, same database:
+**Status: conversations/messages/escalations/leads shipped; usage_stats still planned.** All tables
+live in the same Neon database, one shared connection pool (`app/db.py`), schema applied via
+`CREATE TABLE IF NOT EXISTS` on first connect — no separate migration tool for a schema this size.
 
+Shipped (`app/sessions.py`):
 - `conversations(id, session_id, started_at, last_message_at)`
-- `messages(id, conversation_id, role, content, component, created_at)` — purged after 90 days; the
-10-12 message context window (§4) is just `ORDER BY created_at DESC LIMIT 12` against this table
-- `escalations(id, conversation_id, reason, created_at)`
-- `leads(id, escalation_id, email, created_at)` — **not** purged with the transcript retention job
+- `messages(id, conversation_id, role, content, created_at)` — full transcript, written per-message.
+  Not yet purged after 90 days — the retention job itself is still planned (see [[ROADMAP.md]]).
+- `escalations(id, conversation_id, reason, created_at)` — one row per `/contact` submission,
+  with or without an email, so dead-end escalations can be told apart from ones that became usable
+  leads (PRD §7 success metric)
+- `leads(id, escalation_id, email, created_at)` — only inserted when an email was given; will **not**
+  be purged with the transcript retention job once that exists (PRD §4)
+
+Planned, deferred to the Governance & ops roadmap phase since nothing consumes it yet (no `/stats`
+endpoint, no digest job):
 - `usage_stats(date, requests, tokens_in, tokens_out, estimated_cost_usd, unique_sessions)`
+
+Also still using the pre-Neon-model `notes(id, text, embedding, created_at)` table (§6) — unrelated
+to sessions, kept as-is.
 
 ## 9. Rate limiting
 

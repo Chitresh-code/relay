@@ -20,6 +20,7 @@ from .agent import stream_reply, summarize_for_admin
 from .knowledge import CONTENT_DIR
 from .mailer import send_receipt_email
 from .rate_limit import check_rate_limit, client_ip
+from .sessions import append_message, get_history, record_escalation, record_lead
 from .telegram_bot import notify_admin
 from .telegram_bot import poll as telegram_poll
 
@@ -57,10 +58,6 @@ app.add_middleware(
 # Resume PDF (and any other static content-derived assets) served straight off disk.
 app.mount("/static", StaticFiles(directory=CONTENT_DIR), name="static")
 
-# ponytail: in-memory, per-process session store — fine for one dev/single-worker deploy.
-# Swap for the Postgres `messages` table (ARCHITECTURE.md §4/§8) once persistence across
-# restarts/workers or the 90-day retention job matters.
-_sessions: dict[str, list[dict[str, str]]] = {}
 HISTORY_WINDOW = 12
 
 
@@ -84,8 +81,9 @@ async def chat(req: ChatRequest, request: Request):
     if not await check_rate_limit(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests — try again in a minute.")
     logger.info("chat request session=%s chars=%d", req.session_id, len(req.message))
-    history = _sessions.setdefault(req.session_id, [])
+    history = await get_history(req.session_id)
     history.append({"role": "user", "content": req.message})
+    await append_message(req.session_id, "user", req.message)
 
     async def gen():
         reply_text = ""
@@ -94,7 +92,7 @@ async def chat(req: ChatRequest, request: Request):
                 reply_text += payload["text"]
             yield sse(event_type, payload)
         if reply_text:
-            history.append({"role": "assistant", "content": reply_text})
+            await append_message(req.session_id, "assistant", reply_text)
         yield sse("done", {})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
@@ -107,13 +105,15 @@ async def contact(req: ContactRequest, request: Request):
     if not await check_rate_limit(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests — try again in a minute.")
     logger.info("contact request session=%s has_email=%s", req.session_id, bool(req.email))
-    history = _sessions.get(req.session_id, [])
+    history = await get_history(req.session_id)
     summary = await summarize_for_admin(history, req.reason)
 
     lines = [f"Escalation: {summary}", f"Email: {req.email or '(not given)'}"]
     await notify_admin("\n".join(lines))
 
+    escalation_id = await record_escalation(req.session_id, req.reason)
     if req.email:
+        await record_lead(escalation_id, req.email)
         await send_receipt_email(req.email)
 
     return {"status": "ok"}
