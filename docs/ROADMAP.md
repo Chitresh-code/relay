@@ -28,9 +28,11 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
 - CI: `.github/workflows/ci.yml` runs backend tests + frontend typecheck/build on every PR, both
   required as status checks on the `main` branch protection rule. See [[ARCHITECTURE.md]] §13.
 - Escalation handoff: submitting `request_contact` calls `POST /contact`, which alerts the admin on
-  Telegram and, if an email was given, sends the recruiter an immediate Resend receipt (HTML
-  template in `content/email_receipt.html`, same swap-the-file pattern as the profile/prompt).
-  Forwarding the admin's Telegram reply back to the recruiter is still planned — see below.
+  Telegram with an LLM-generated summary of what the recruiter wants (`summarize_for_admin` in
+  `app/agent.py`, falls back to the raw escalation reason on any failure) and, if an email was
+  given, sends the recruiter an immediate Resend receipt (HTML template in
+  `content/email_receipt.html`, same swap-the-file pattern as the profile/prompt). Forwarding the
+  admin's Telegram reply back to the recruiter is still planned — see below.
 - Rate limiting: `POST /chat` and `POST /contact` capped per client IP over any REST-compatible
   Redis (fails open if unconfigured or on Redis errors). See [[ARCHITECTURE.md]] §9.
 

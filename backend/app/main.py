@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .agent import stream_reply
+from .agent import stream_reply, summarize_for_admin
 from .knowledge import CONTENT_DIR
 from .mailer import send_receipt_email
 from .rate_limit import check_rate_limit, client_ip
@@ -108,12 +108,9 @@ async def contact(req: ContactRequest, request: Request):
         raise HTTPException(status_code=429, detail="Too many requests — try again in a minute.")
     logger.info("contact request session=%s has_email=%s", req.session_id, bool(req.email))
     history = _sessions.get(req.session_id, [])
-    last_question = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    summary = await summarize_for_admin(history, req.reason)
 
-    lines = [f"Escalation: {req.reason}"]
-    if last_question:
-        lines.append(f"Last question: {last_question}")
-    lines.append(f"Email: {req.email or '(not given)'}")
+    lines = [f"Escalation: {summary}", f"Email: {req.email or '(not given)'}"]
     await notify_admin("\n".join(lines))
 
     if req.email:
