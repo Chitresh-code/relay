@@ -4,8 +4,8 @@ Instructions for Claude (and any contributor) working in this repo.
 
 ## Project
 
-Relay — a chat agent grounded in Chitresh Gyanani's resume/profile, with escalation to
-Telegram when it can't answer. See [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md),
+Relay — a chat agent grounded in a resume/profile, with escalation to Telegram when it can't
+answer. See [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md),
 [Roadmap](docs/ROADMAP.md) before making architectural changes — keep them in sync with
 the code as it evolves.
 
@@ -24,7 +24,8 @@ Use **uv**, not `pip`/`venv` directly.
 
 ## Git workflow
 
-- **Never commit directly to `main`.** Always work on a branch.
+- **Never commit directly to `main`.** Always work on a branch — this is enforced by GitHub
+  branch protection on `main` (PR required, no force-push, no deletion), not just convention.
 - Branch naming: `type/short-title` — e.g. `feat/chat-endpoint`, `fix/sse-parsing`,
   `chore/repo-setup`, `docs/update-prd`.
 - Merge via pull request (`gh pr create`), not direct pushes to `main`.

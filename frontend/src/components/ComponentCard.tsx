@@ -252,7 +252,7 @@ function RequestContactCardView({ t, reason }: { t: Theme; reason: string }) {
     return (
       <div style={cardStyle(t)}>
         <div style={{ font: "13.5px system-ui,sans-serif", color: t.textBody }}>
-          Thanks — Chitresh will follow up{email ? ` at ${email}` : ""}.
+          Thanks — you'll hear back{email ? ` at ${email}` : ""}.
         </div>
       </div>
     );
