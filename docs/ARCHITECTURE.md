@@ -266,9 +266,8 @@ endpoint — unless a later Neon feature adds outbound HTTP from scheduled queri
 
 **Shipped.** `.github/workflows/ci.yml` runs on every PR and push to `main`: backend job (`uv sync` +
 `tests.test_smoke` + `tests.test_context_store`) and frontend job (`tsc --noEmit` + `npm run build`).
-Once it's run at least once, add both jobs as required status checks on the `main` branch protection
-rule so a red PR literally can't merge, not just "shouldn't" — not done yet, needs a first run to
-reference by name.
+Both jobs are required status checks on the `main` branch protection rule, so a red PR literally
+can't merge, not just "shouldn't."
 
 ## 14. Telegram bot commands
 
