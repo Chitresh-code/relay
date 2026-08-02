@@ -45,19 +45,20 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   shared pool (`app/db.py`). `app/main.py`'s in-memory `_sessions` dict is gone — history now lives
   in `app/sessions.py`, backed by Postgres with an in-memory-per-process fallback when
   `DATABASE_URL` is unset (local dev). `/contact` now records an `escalations` row per submission
-  and a `leads` row when an email is given. `usage_stats` deferred to Governance & ops below (no
-  consumer yet). See [[ARCHITECTURE.md]] §4/§8.
+  and a `leads` row when an email is given. See [[ARCHITECTURE.md]] §4/§8.
 - Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed,
   one-time setup script at `backend/scripts/retention_purge.sql`) + a privacy notice line on the
   chat widget. See [[ARCHITECTURE.md]] §12.
+- `usage_stats` table (`app/usage_stats.py`) + logging from both agents, weekly digest pushed
+  automatically every Monday via GitHub Actions cron (`.github/workflows/weekly-digest.yml`)
+  hitting `POST /internal/weekly-digest` (needs an outbound Telegram call, so it can't be
+  `pg_cron`-only). See [[ARCHITECTURE.md]] §7/§8/§12.
+- Telegram bot slash commands: `/health`, `/stats`, `/weekly` (shares its digest builder with the
+  Monday auto-push above). See [[ARCHITECTURE.md]] §14.
+- Themed 404 page for any URL path other than `/` (the SPA has no router, so this checks
+  `window.location.pathname` directly — `frontend/src/components/NotFound.tsx`).
 
 ## Planned — roughly in build order
-
-### Governance & ops
-- `usage_stats` table + logging + weekly digest, pushed automatically every Monday via GitHub
-  Actions cron hitting an internal endpoint (needs an outbound Telegram call, so it can't be
-  `pg_cron`-only).
-- Telegram bot slash commands: `/health`, `/stats`, `/weekly`. See [[ARCHITECTURE.md]] §14.
 
 ### Deploy
 - FastAPI Cloud (backend) + Vercel (frontend), both free tier.

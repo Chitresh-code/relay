@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .context_store import search_notes
 from .github import fetch_recent_repos
 from .knowledge import PROFILE, RESUME_INFO, SYSTEM_PROMPT_TEMPLATE
+from .usage_stats import record_usage
 
 # Standard OpenAI SDK env var names, kept generic on purpose: swapping providers (OpenRouter
 # free tier now, straight OpenAI or anything else OpenAI-compatible later) is just an env var
@@ -57,7 +58,7 @@ async def _describe_from_readme(readme_text: str) -> str:
             },
             {"role": "user", "content": readme_text},
         ],
-        max_tokens=60,
+        max_completion_tokens=60,
     )
     return (resp.choices[0].message.content or "").strip()
 
@@ -86,7 +87,7 @@ async def summarize_for_admin(history: list[dict[str, str]], reason: str) -> str
                 },
                 {"role": "user", "content": f"Escalation reason: {reason}\n\nConversation:\n{transcript}"},
             ],
-            max_tokens=150,
+            max_completion_tokens=150,
         )
         return (resp.choices[0].message.content or reason).strip()
     except RateLimitError:
@@ -95,6 +96,35 @@ async def summarize_for_admin(history: list[dict[str, str]], reason: str) -> str
     except Exception:
         logger.exception("Admin summary generation failed — falling back to raw reason")
         return reason
+
+
+async def summarize_weekly_topics(messages: list[str]) -> str:
+    """One-off call for the weekly digest (app/telegram_bot.py): turns a sample of the week's
+    recruiter questions into 3-5 recurring topics. Falls back to a plain notice on any failure —
+    a nice-to-have on top of the numeric stats, not something that should block the digest."""
+    if not messages:
+        return "No conversations this week."
+    sample = "\n".join(f"- {m}" for m in messages[:150])
+    try:
+        resp = await _client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "These are recruiter questions asked to a resume chatbot this week. "
+                    "In 3-5 short bullet points, name the recurring topics/themes. No filler.",
+                },
+                {"role": "user", "content": sample},
+            ],
+            max_completion_tokens=150,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except RateLimitError:
+        logger.warning("Model rate limit hit — skipping weekly topic summary")
+        return "(topic summary unavailable — rate limited)"
+    except Exception:
+        logger.exception("Weekly topic summary generation failed")
+        return "(topic summary unavailable)"
 
 
 UI_TOOL_NAMES = {
@@ -249,6 +279,7 @@ async def stream_reply(history: list[dict[str, str]]):
                         except json.JSONDecodeError:
                             args = {}
                         yield "component", {"tool": name, "content": args}
+        await record_usage(result.context_wrapper.usage)
     except RateLimitError:
         logger.warning("Model rate limit hit")
         yield "error", {"message": "Getting a lot of requests right now — try again in a minute."}

@@ -1,0 +1,15 @@
+name: Weekly Digest
+
+on:
+  schedule:
+    - cron: "0 14 * * 1" # Monday 14:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /internal/weekly-digest
+        run: |
+          curl -sf -X POST "${{ secrets.RELAY_BASE_URL }}/internal/weekly-digest" \
+            -H "X-Internal-Key: ${{ secrets.RELAY_INTERNAL_API_KEY }}"

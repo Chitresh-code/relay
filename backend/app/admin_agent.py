@@ -8,6 +8,7 @@ from .context_store import add_note
 from .knowledge import CANDIDATE_NAME
 from .mailer import send_custom_email
 from .sessions import get_history
+from .usage_stats import record_usage
 
 logger = logging.getLogger("relay.admin_agent")
 
@@ -62,6 +63,7 @@ admin_agent = Agent(
 async def run_admin_agent(history: list[dict[str, str]]) -> str:
     try:
         result = await Runner.run(admin_agent, input=history)
+        await record_usage(result.context_wrapper.usage)
         return str(result.final_output)
     except RateLimitError:
         logger.warning("Model rate limit hit")

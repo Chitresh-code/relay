@@ -10,20 +10,20 @@ flowchart TD
     Widget -->|POST /chat| Backend["FastAPI backend<br/>OpenAI Agents SDK via OpenRouter<br/>hosted: FastAPI Cloud"]
     Widget -->|POST /contact| Backend
 
-    Backend <--> DB[("Neon Postgres<br/>notes, conversations, messages, escalations, leads (shipped)<br/>usage_stats (planned)")]
+    Backend <--> DB[("Neon Postgres<br/>notes, conversations, messages, escalations, leads, usage_stats")]
     Backend <--> Redis[("REST-compatible Redis<br/>rate limiting (shipped)")]
     Backend -->|OpenAI-compatible API| OpenRouter["OpenRouter<br/>free-tier models"]
 
     Backend -->|notify_admin| TG["Telegram Bot API<br/>admin bot + admin agent, long-polling"]
     Backend -->|search_context| DB
     TG -->|escalation alert| Admin([Admin])
-    Admin -->|reply / chat| TG
+    Admin -->|reply / chat / commands| TG
     TG -->|forwards reply| Resend["Resend<br/>receipt email + reply-forwarding + outreach (send_email tool)"]
     Backend -->|receipt email, if contact left| Resend
     Resend -->|receipt / reply| Recruiter
 
     DB -->|"pg_cron - shipped"| Purge["retention purge (in-DB)"]
-    Cron["GitHub Actions<br/>free cron — planned"] -->|triggers| Digest["/internal/weekly-digest"]
+    Cron["GitHub Actions<br/>free cron — shipped"] -->|triggers| Digest["/internal/weekly-digest"]
     Digest --> Backend
 ```
 
@@ -46,9 +46,9 @@ flowchart TD
 | Cache / rate limit                              | Any REST-compatible Redis (Upstash is the reference implementation), free tier — *shipped (§9)* | requested; serverless-friendly (HTTP-based), enough headroom for personal-scale traffic                                                                                                                                                                                                                                                            |
 | Email                                           | **Resend**, free tier — *shipped*: receipt, admin-reply-forwarding, and admin-agent outreach (`send_email`), all resume-attached, `Reply-To` configurable separately from the sending address | requested; receipt confirms the recruiter's message was received; reply-forwarding is the admin's actual personal response; outreach lets the admin agent send follow-ups directly                                                                                                                                                                                                |
 | Admin interface                                 | **Telegram Bot API**, raw `httpx` calls, long-polling (`getUpdates`) — shipped: escalation alerts + admin agent (§6), commands planned (§14) | no separate library needed for ~2 endpoints; long-polling avoids requiring a public webhook URL for a single-admin bot, unlike the originally planned webhook mode                                                                                                                                                                 |
-| Scheduled jobs (weekly digest, retention purge) | **Split**: retention purge via **`pg_cron`** in Neon — *shipped (§12)*; weekly digest via **GitHub Actions cron** hitting an internal endpoint — *planned, not built (§12)* | purge is pure SQL, no reason to leave the database for it; digest needs an outbound Telegram call, which `pg_cron` alone can't do                                                                                                                                                                                                 |
+| Scheduled jobs (weekly digest, retention purge) | **Split**: retention purge via **`pg_cron`** in Neon — *shipped (§12)*; weekly digest via **GitHub Actions cron** hitting an internal endpoint — *shipped (§12)* | purge is pure SQL, no reason to leave the database for it; digest needs an outbound Telegram call, which `pg_cron` alone can't do                                                                                                                                                                                                 |
 | Knowledge base                                  | Plain text (resume + curated bio doc + cached GitHub summary) injected into the agent's context, plus a small notes RAG layer on Neon (§6) | small enough to fit directly — see §6                                                                                                                                                                                                                                                                                              |
-| Observability                                   | Structured logs + a `usage_stats` table in Postgres, queried by `/stats` and the weekly digest — *planned, not built (§8)* | avoids standing up a third-party LLM observability platform for what's currently a personal project; see §7 for the upgrade path                                                                                                                                                                                                  |
+| Observability                                   | Structured logs + a `usage_stats` table in Postgres, queried by `/stats` and the weekly digest — *shipped (§7/§8)* | avoids standing up a third-party LLM observability platform for what's currently a personal project; see §7 for the upgrade path                                                                                                                                                                                                  |
 
 
 
@@ -204,8 +204,10 @@ enough"): Neon already supports the `pgvector` extension, so swap `context_store
 
 ## 7. Observability — why no dedicated LLM ops platform (yet)
 
-`/chat` and `/telegram/webhook` log token counts and estimated cost per request into a
-`usage_stats` table. `/stats` and the weekly digest are just queries against that table. This covers
+**Status: shipped.** Both agents (`app/agent.py:stream_reply`, `app/admin_agent.py:run_admin_agent`)
+log token counts and estimated cost per run into a `usage_stats` table (`app/usage_stats.py`), one
+row per day, upserted. `/stats` and `/weekly` (Telegram commands, §14) are just queries against that
+table plus a live `COUNT(DISTINCT)` over `conversations`/`messages` for unique sessions. This covers
 the ask (traffic, usage, weekly updates) without adding a service like Langfuse or Helicone.
 
 **Upgrade path**: if you want request-level tracing/replay (not just aggregate stats), Langfuse has a
@@ -214,7 +216,7 @@ touching the data model above.
 
 ## 8. Data model (minimum viable)
 
-**Status: conversations/messages/escalations/leads shipped; usage_stats still planned.** All tables
+**Status: shipped.** All tables
 live in the same Neon database, one shared connection pool (`app/db.py`). Schema is applied via
 `CREATE TABLE IF NOT EXISTS` on first connect — but that's a no-op against a table that already
 exists, even one that predates a newer column, so adding a column to an existing table also needs
@@ -235,9 +237,11 @@ Shipped (`app/sessions.py`):
   can be matched back to this lead's email (`get_lead_by_message_id`, used by
   `app/telegram_bot.py:poll`).
 
-Planned, deferred to the Governance & ops roadmap phase since nothing consumes it yet (no `/stats`
-endpoint, no digest job):
-- `usage_stats(date, requests, tokens_in, tokens_out, estimated_cost_usd, unique_sessions)`
+- `usage_stats(date, requests, tokens_in, tokens_out, estimated_cost_usd)` (`app/usage_stats.py`) —
+  one row per day, upserted after every agent run. `unique_sessions` isn't a stored column here:
+  ponytail — a live `COUNT(DISTINCT)` against `conversations`/`messages` at query time is cheap
+  enough at personal-scale traffic and can't drift out of sync with the real data, so `/stats`/
+  `/weekly` compute it on demand instead of maintaining a second aggregate.
 
 Also still using the pre-Neon-model `notes(id, text, embedding, created_at)` table (§6) — unrelated
 to sessions, kept as-is.
@@ -286,7 +290,7 @@ wholesale re-platform.
 
 ## 12. Scheduled jobs
 
-**Status: retention purge shipped; weekly digest not yet built.**
+**Status: shipped.**
 
 - **Retention purge** (`DELETE FROM messages WHERE created_at < now() - interval '90 days'`) is pure
 SQL with no outbound call — a good fit for **`pg_cron`**, which Neon supports directly in the
@@ -297,8 +301,13 @@ Caveat: `pg_cron` only fires while compute is active, so it won't run during Neo
 scale-to-zero suspension — either accept jobs occasionally getting skipped on a cold branch, or pin
 that branch always-on.
 - **Weekly digest** needs an outbound call (send a Telegram message), which `pg_cron` alone can't do.
-Stays on an external trigger — GitHub Actions cron hitting an internal `/internal/weekly-digest`
-endpoint — unless a later Neon feature adds outbound HTTP from scheduled queries.
+Stays on an external trigger — GitHub Actions cron (`.github/workflows/weekly-digest.yml`, Monday
+14:00 UTC) hitting `POST /internal/weekly-digest`, guarded by a shared secret in an `X-Internal-Key`
+header (`INTERNAL_API_KEY`) rather than `pg_cron` — unless a later Neon feature adds outbound HTTP
+from scheduled queries. The endpoint 404s (not 401s) when that env var is unset, so it's invisible
+rather than just unauthorized, same as every other optional feature's graceful-disable pattern.
+Shares its digest-building logic (`app/telegram_bot.py:build_weekly_digest`) with the on-demand
+`/weekly` Telegram command (§14).
 
 ## 13. CI
 
@@ -309,10 +318,12 @@ can't merge, not just "shouldn't."
 
 ## 14. Telegram bot commands
 
-**Status: partially built.** `app/telegram_bot.py` currently handles free-text messages only (the
-note-taking flow, §6). Planned slash commands, same long-polling loop, same admin-only `chat_id`
-check:
+**Status: shipped.** `app/telegram_bot.py` dispatches on exact-match text against a `COMMANDS` dict
+before falling through to the free-text note-taking/admin-agent flow (§6), same long-polling loop,
+same admin-only `chat_id` check:
 
-- `/health` — backend + DB reachability, quick sanity check from your phone
-- `/stats` — today's traffic, sessions, token/cost usage (needs `usage_stats`, §8)
-- `/weekly` — on-demand version of the Monday digest (§12)
+- `/health` — backend + DB reachability (`SELECT 1`), quick sanity check from your phone
+- `/stats` — today's requests, tokens in/out, estimated cost, and unique sessions (`app/usage_stats.py`)
+- `/weekly` — last 7 days of the same stats, plus conversation/escalation/lead counts and an
+  LLM-generated "top topics" summary over the week's recruiter questions
+  (`app/agent.py:summarize_weekly_topics`). Shared with the Monday auto-push (§12).

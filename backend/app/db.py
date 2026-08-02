@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS leads (
 -- existing `leads` table in Neon current with this schema.
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER;
+CREATE TABLE IF NOT EXISTS usage_stats (
+    date DATE PRIMARY KEY,
+    requests INTEGER NOT NULL DEFAULT 0,
+    tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0);
 """
 
 _pool: asyncpg.Pool | None = None

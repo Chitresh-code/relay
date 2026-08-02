@@ -21,11 +21,12 @@ from .knowledge import CONTENT_DIR
 from .mailer import send_receipt_email
 from .rate_limit import check_rate_limit, client_ip
 from .sessions import append_message, get_history, record_escalation, record_lead
-from .telegram_bot import notify_admin
+from .telegram_bot import build_weekly_digest, notify_admin
 from .telegram_bot import poll as telegram_poll
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger("relay")
@@ -129,4 +130,16 @@ async def contact(req: ContactRequest, request: Request):
 
 @app.get("/health")
 async def health():
+    return {"status": "ok"}
+
+
+@app.post("/internal/weekly-digest")
+async def internal_weekly_digest(request: Request):
+    """Hit by the GitHub Actions cron (.github/workflows/weekly-digest.yml) every Monday to push
+    the digest without waiting for someone to ask via /weekly. 404s (not 401) when unconfigured,
+    so the endpoint is invisible rather than just unauthorized — same graceful-disable pattern as
+    the rest of the app's optional features."""
+    if not INTERNAL_API_KEY or request.headers.get("X-Internal-Key") != INTERNAL_API_KEY:
+        raise HTTPException(status_code=404)
+    await notify_admin(await build_weekly_digest())
     return {"status": "ok"}
