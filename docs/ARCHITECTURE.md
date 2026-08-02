@@ -65,11 +65,11 @@ Component set — these match the actual UI design (see §10), not a generic pla
 | tool | renders | content shape |
 |---|---|---|
 | `show_skills` | grouped skill tags | `[{category, skills: [str]}]` |
-| `show_projects` | project cards | `[{title, year, description, tech: [str]}]` |
+| `show_projects` | recent public GitHub repo cards | `[{name, description, url, language, updated}]` — no-arg tool call; backend fetches the 5 most recently pushed public repos live from the GitHub API (`app/github.py`), 1hr in-memory cache, never the model. Description falls back to an LLM summary of the repo's README when GitHub has none |
 | `show_experience` | role cards | `[{role, company, period, bullets: [str]}]` |
 | `show_education` | education cards | `[{degree, school, period}]` |
 | `show_contact` | key/value rows | `[{label, value}]` |
-| `show_resume` | resume download card | `{name, format, updated, size, url}` |
+| `show_resume` | resume view/download card | `{name, format, updated, size, url}` — no-arg tool call; backend fills content from the real file (`app/knowledge.py:RESUME_INFO`), never the model, so the URL can't be hallucinated |
 | `show_info` | pull-quote card | `{quote}` |
 | `request_contact` | inline contact-capture form | `{reason}` — ties into the `escalate()` flow in PRD §3.3 |
 
@@ -137,10 +137,15 @@ worth pulling in an SSE client library for.
 
 ## 6. Knowledge base — why no vector DB (yet)
 
-The corpus is: resume text, a curated "about / FAQ" doc, and a cached summary of public GitHub repos —
-realistically a few tens of KB. That fits comfortably in a single context window with room to spare.
-Adding embeddings + a vector store now would mean standing up and maintaining retrieval infra for a
-problem you don't have.
+The corpus is `content/profile.md` — resume text plus a curated "about / FAQ" doc — realistically a
+few tens of KB. That fits comfortably in a single context window with room to spare. GitHub activity
+is not part of this static corpus; it's fetched live on demand (§3, `show_projects`) so it can't
+go stale. Adding embeddings + a vector store now would mean standing up and maintaining retrieval
+infra for a problem you don't have.
+
+**Configurability**: `content/profile.md`, `content/system_prompt.md`, and the resume PDF are the only
+person-specific inputs — swap those three plus the `CANDIDATE_NAME`/`GITHUB_USERNAME` env vars
+(§10) to point Relay at a different profile without touching app code.
 
 **Upgrade path if the KB grows** (many long docs, blog posts, case studies): Neon already supports the
 `pgvector` extension, so RAG can be added by embedding docs into the same Postgres instance — no new
