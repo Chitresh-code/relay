@@ -80,17 +80,17 @@ the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's
   the public agent via `search_context`), look up any recruiter session's full transcript
   (`get_session_history`), and draft/send outreach or follow-up emails (`send_email`, resume
   attached automatically).
-- **Planned**: `/health`, `/stats` (today's traffic, sessions, token/cost usage), `/weekly` (on-demand
-  digest; also auto-pushed every Monday — traffic summary, top question topics, LLM cost, a
-  conversation recap).
+- **Shipped**: `/health`, `/stats` (today's traffic, sessions, token/cost usage), `/weekly` (on-demand
+  digest; also auto-pushed every Monday via GitHub Actions — traffic summary, top question topics,
+  LLM cost, a conversation recap).
 
 ### 3.5 Observability & governance
-**Status: partially built** — see [[ROADMAP.md]].
-- **Shipped: conversations are stored** in Postgres (`app/sessions.py`), plus escalations and leads
-  (§4). Retention window below is now enforced by a `pg_cron` purge job (one-time setup script,
+**Status: shipped** — see [[ROADMAP.md]].
+- Conversations are stored in Postgres (`app/sessions.py`), plus escalations and leads (§4).
+  Retention window below is enforced by a `pg_cron` purge job (one-time setup script,
   `backend/scripts/retention_purge.sql`), and disclosed via a privacy notice line on the widget.
-- **Planned**: aggregate usage stats (requests, tokens, estimated cost, unique sessions/day),
-  independent of raw transcript retention — needed for `/weekly`/`/stats` (§3.4).
+- Aggregate usage stats (requests, tokens, estimated cost — `app/usage_stats.py`), independent of
+  raw transcript retention — backs `/weekly`/`/stats` (§3.4).
 - No third-party sharing/selling of conversation data.
 
 > **Decision (resolved during scoping):** conversations *are* stored in full (not just metadata), with

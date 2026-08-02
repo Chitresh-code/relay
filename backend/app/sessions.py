@@ -82,6 +82,40 @@ async def record_lead(
         )
 
 
+async def get_recent_user_messages(days: int, limit: int = 150) -> list[str]:
+    """Recruiter questions from the trailing `days` — feeds the weekly digest's LLM topic
+    summary (app/agent.py:summarize_weekly_topics). Empty list, not an error, when Postgres
+    isn't configured."""
+    pool = await get_pool()
+    if pool is None:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT content FROM messages WHERE role = 'user' "
+            "AND created_at >= now() - make_interval(days => $1) "
+            "ORDER BY created_at DESC LIMIT $2",
+            days, limit,
+        )
+    return [r["content"] for r in rows]
+
+
+async def get_period_counts(days: int) -> dict[str, int]:
+    """Conversation/escalation/lead counts over the trailing `days`, for the weekly digest's
+    recap line."""
+    pool = await get_pool()
+    if pool is None:
+        return {"conversations": 0, "escalations": 0, "leads": 0}
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT "
+            "(SELECT COUNT(*) FROM conversations WHERE started_at >= now() - make_interval(days => $1)) AS conversations, "
+            "(SELECT COUNT(*) FROM escalations WHERE created_at >= now() - make_interval(days => $1)) AS escalations, "
+            "(SELECT COUNT(*) FROM leads WHERE created_at >= now() - make_interval(days => $1)) AS leads",
+            days,
+        )
+    return dict(row)
+
+
 async def get_lead_by_message_id(message_id: int) -> dict[str, str] | None:
     """Looks up the recruiter's name/email from the Telegram message_id of the escalation alert
     the admin is replying to — how the bot knows where to forward that reply (see
