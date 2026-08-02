@@ -1,8 +1,9 @@
 import logging
 
 from agents import Agent, Runner, function_tool
+from openai import RateLimitError
 
-from .agent import AGENT_NAME, MODEL, _embed
+from .agent import AGENT_NAME, MODEL, MODEL_SETTINGS, _embed
 from .context_store import add_note
 from .knowledge import CANDIDATE_NAME
 from .mailer import send_custom_email
@@ -54,6 +55,7 @@ admin_agent = Agent(
     instructions=INSTRUCTIONS,
     model=MODEL,
     tools=[save_note, get_session_history, send_email],
+    **({"model_settings": MODEL_SETTINGS} if MODEL_SETTINGS else {}),
 )
 
 
@@ -61,6 +63,9 @@ async def run_admin_agent(history: list[dict[str, str]]) -> str:
     try:
         result = await Runner.run(admin_agent, input=history)
         return str(result.final_output)
+    except RateLimitError:
+        logger.warning("Model rate limit hit")
+        return "Hit the model rate limit — give it a bit and try again."
     except Exception:
         logger.exception("Admin agent run failed")
         return "Something went wrong processing that — try again?"
