@@ -1,7 +1,7 @@
 # Chitresh Gyanani — Profile
 
 Solution Architect · Applied AI/ML & Backend Engineering
-New Delhi, India · +91 88820 95604 · gychitresh1290@gmail.com
+New Delhi, India · +91 88820 95604 · hire@chitreshgyanani.com · contact@chitreshgyanani.com
 linkedin.com/in/chitresh-gyanani · github.com/Chitresh-code · gitlab.com/notchitresh
 
 ## Summary
