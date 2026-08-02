@@ -11,7 +11,7 @@ CANDIDATE_NAME = os.environ.get("CANDIDATE_NAME", "Your Name")
 PROFILE = (CONTENT_DIR / "profile.md").read_text()
 SYSTEM_PROMPT_TEMPLATE = (CONTENT_DIR / "system_prompt.md").read_text()
 
-RESUME_FILE = os.environ.get("RESUME_FILE", "resume-editorial.pdf")
+RESUME_FILE = os.environ.get("RESUME_FILE", "ChitreshGyanani.pdf")
 _resume_path = CONTENT_DIR / RESUME_FILE
 _resume_stat = _resume_path.stat()
 
