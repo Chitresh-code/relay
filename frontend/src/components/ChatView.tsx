@@ -164,6 +164,16 @@ export function ChatView({
             send
           </button>
         </div>
+        <div
+          style={{
+            maxWidth: 640,
+            margin: "8px auto 0",
+            font: "11px 'JetBrains Mono',monospace",
+            color: t.textMuted,
+          }}
+        >
+          Messages are stored to improve replies and are purged after 90 days.
+        </div>
       </form>
     </div>
   );

@@ -47,12 +47,13 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   `DATABASE_URL` is unset (local dev). `/contact` now records an `escalations` row per submission
   and a `leads` row when an email is given. `usage_stats` deferred to Governance & ops below (no
   consumer yet). See [[ARCHITECTURE.md]] §4/§8.
+- Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed,
+  one-time setup script at `backend/scripts/retention_purge.sql`) + a privacy notice line on the
+  chat widget. See [[ARCHITECTURE.md]] §12.
 
 ## Planned — roughly in build order
 
 ### Governance & ops
-- Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed) +
-  privacy notice on the widget. See [[ARCHITECTURE.md]] §12.
 - `usage_stats` table + logging + weekly digest, pushed automatically every Monday via GitHub
   Actions cron hitting an internal endpoint (needs an outbound Telegram call, so it can't be
   `pg_cron`-only).

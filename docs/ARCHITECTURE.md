@@ -22,7 +22,7 @@ flowchart TD
     Backend -->|receipt email, if contact left| Resend
     Resend -->|receipt / reply| Recruiter
 
-    DB -->|"pg_cron - planned"| Purge["retention purge (in-DB)"]
+    DB -->|"pg_cron - shipped"| Purge["retention purge (in-DB)"]
     Cron["GitHub Actions<br/>free cron — planned"] -->|triggers| Digest["/internal/weekly-digest"]
     Digest --> Backend
 ```
@@ -46,7 +46,7 @@ flowchart TD
 | Cache / rate limit                              | Any REST-compatible Redis (Upstash is the reference implementation), free tier — *shipped (§9)* | requested; serverless-friendly (HTTP-based), enough headroom for personal-scale traffic                                                                                                                                                                                                                                                            |
 | Email                                           | **Resend**, free tier — *shipped*: receipt, admin-reply-forwarding, and admin-agent outreach (`send_email`), all resume-attached, `Reply-To` configurable separately from the sending address | requested; receipt confirms the recruiter's message was received; reply-forwarding is the admin's actual personal response; outreach lets the admin agent send follow-ups directly                                                                                                                                                                                                |
 | Admin interface                                 | **Telegram Bot API**, raw `httpx` calls, long-polling (`getUpdates`) — shipped: escalation alerts + admin agent (§6), commands planned (§14) | no separate library needed for ~2 endpoints; long-polling avoids requiring a public webhook URL for a single-admin bot, unlike the originally planned webhook mode                                                                                                                                                                 |
-| Scheduled jobs (weekly digest, retention purge) | **Split**: retention purge via **`pg_cron`** in Neon; weekly digest via **GitHub Actions cron** hitting an internal endpoint — *planned, not built (§12)* | purge is pure SQL, no reason to leave the database for it; digest needs an outbound Telegram call, which `pg_cron` alone can't do                                                                                                                                                                                                 |
+| Scheduled jobs (weekly digest, retention purge) | **Split**: retention purge via **`pg_cron`** in Neon — *shipped (§12)*; weekly digest via **GitHub Actions cron** hitting an internal endpoint — *planned, not built (§12)* | purge is pure SQL, no reason to leave the database for it; digest needs an outbound Telegram call, which `pg_cron` alone can't do                                                                                                                                                                                                 |
 | Knowledge base                                  | Plain text (resume + curated bio doc + cached GitHub summary) injected into the agent's context, plus a small notes RAG layer on Neon (§6) | small enough to fit directly — see §6                                                                                                                                                                                                                                                                                              |
 | Observability                                   | Structured logs + a `usage_stats` table in Postgres, queried by `/stats` and the weekly digest — *planned, not built (§8)* | avoids standing up a third-party LLM observability platform for what's currently a personal project; see §7 for the upgrade path                                                                                                                                                                                                  |
 
@@ -108,13 +108,12 @@ of questions).
 the **last 10-12 messages** (`HISTORY_WINDOW`) to the model. This bounds prompt size/cost regardless
 of how long a conversation runs.
 - **Storage vs. context are different things**: the full transcript is kept in Postgres (needed for
-the weekly digest and the 90-day-retention transcript store from PRD §4, both still planned — the
-purge job itself hasn't been built yet, see [[ROADMAP.md]]) — the 10-12 window only bounds what's
-replayed *to the model*, not what's kept.
+the weekly digest, still planned, and the 90-day-retention purge from PRD §4, shipped — see §12) —
+the 10-12 window only bounds what's replayed *to the model*, not what's kept.
 - **New chat**: a visible reset control rotates `session_id` (new UUID, old one abandoned) and clears
 the visible message list client-side. The old conversation isn't deleted — it just ages out under
-the normal retention job once that's built. No backend call needed to "start" a new chat; the next
-`/chat` request with the new `session_id` lazily creates a new `conversations` row.
+the retention purge job (§12). No backend call needed to "start" a new chat; the next `/chat`
+request with the new `session_id` lazily creates a new `conversations` row.
 
 
 
@@ -226,7 +225,7 @@ schema this size.
 Shipped (`app/sessions.py`):
 - `conversations(id, session_id, started_at, last_message_at)`
 - `messages(id, conversation_id, role, content, created_at)` — full transcript, written per-message.
-  Not yet purged after 90 days — the retention job itself is still planned (see [[ROADMAP.md]]).
+  Purged after 90 days by the `pg_cron` retention job (§12).
 - `escalations(id, conversation_id, reason, created_at)` — one row per `/contact` submission,
   with or without an email, so dead-end escalations can be told apart from ones that became usable
   leads (PRD §7 success metric)
@@ -287,13 +286,16 @@ wholesale re-platform.
 
 ## 12. Scheduled jobs
 
-**Status: not yet built.** Two different jobs, two different mechanisms, once §8's tables exist:
+**Status: retention purge shipped; weekly digest not yet built.**
 
 - **Retention purge** (`DELETE FROM messages WHERE created_at < now() - interval '90 days'`) is pure
 SQL with no outbound call — a good fit for **`pg_cron`**, which Neon supports directly in the
-database (no external scheduler, no internal HTTP endpoint to secure). Caveat: `pg_cron` only fires
-while compute is active, so it won't run during Neon's free-tier scale-to-zero suspension — either
-accept jobs occasionally getting skipped on a cold branch, or pin that branch always-on.
+database (no external scheduler, no internal HTTP endpoint to secure). Shipped as a one-time setup
+script, `backend/scripts/retention_purge.sql` — not run automatically on app boot, since
+`CREATE EXTENSION`/`cron.schedule` need a privileged role that not every `DATABASE_URL` grants.
+Caveat: `pg_cron` only fires while compute is active, so it won't run during Neon's free-tier
+scale-to-zero suspension — either accept jobs occasionally getting skipped on a cold branch, or pin
+that branch always-on.
 - **Weekly digest** needs an outbound call (send a Telegram message), which `pg_cron` alone can't do.
 Stays on an external trigger — GitHub Actions cron hitting an internal `/internal/weekly-digest`
 endpoint — unless a later Neon feature adds outbound HTTP from scheduled queries.
