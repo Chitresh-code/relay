@@ -46,13 +46,15 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   in `app/sessions.py`, backed by Postgres with an in-memory-per-process fallback when
   `DATABASE_URL` is unset (local dev). `/contact` now records an `escalations` row per submission
   and a `leads` row when an email is given. See [[ARCHITECTURE.md]] §4/§8.
-- Retention purge job via `pg_cron` directly in Neon (pure SQL, no external scheduler needed,
-  one-time setup script at `backend/scripts/retention_purge.sql`) + a privacy notice line on the
-  chat widget. See [[ARCHITECTURE.md]] §12.
+- Retention purge job via GitHub Actions cron (`.github/workflows/retention-purge.yml`, daily)
+  hitting `POST /internal/retention-purge` (`app/sessions.py:purge_old_messages`) + a privacy
+  notice line on the chat widget. Originally planned as a `pg_cron` job, but `CREATE EXTENSION`/
+  `cron.schedule` need a privileged Neon role not every `DATABASE_URL` grants — same GitHub
+  Actions + internal-endpoint mechanism as the weekly digest below instead. See
+  [[ARCHITECTURE.md]] §12.
 - `usage_stats` table (`app/usage_stats.py`) + logging from both agents, weekly digest pushed
   automatically every Monday via GitHub Actions cron (`.github/workflows/weekly-digest.yml`)
-  hitting `POST /internal/weekly-digest` (needs an outbound Telegram call, so it can't be
-  `pg_cron`-only). See [[ARCHITECTURE.md]] §7/§8/§12.
+  hitting `POST /internal/weekly-digest`. See [[ARCHITECTURE.md]] §7/§8/§12.
 - Telegram bot slash commands: `/health`, `/stats`, `/weekly` (shares its digest builder with the
   Monday auto-push above). See [[ARCHITECTURE.md]] §14.
 - Themed 404 page for any URL path other than `/` (the SPA has no router, so this checks

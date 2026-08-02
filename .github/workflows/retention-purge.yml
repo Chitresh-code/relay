@@ -1,0 +1,15 @@
+name: Retention Purge
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # daily 03:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /internal/retention-purge
+        run: |
+          curl -sf -X POST "${{ secrets.RELAY_BASE_URL }}/internal/retention-purge" \
+            -H "X-Internal-Key: ${{ secrets.RELAY_INTERNAL_API_KEY }}"

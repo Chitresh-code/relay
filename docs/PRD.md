@@ -87,8 +87,9 @@ the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's
 ### 3.5 Observability & governance
 **Status: shipped** — see [[ROADMAP.md]].
 - Conversations are stored in Postgres (`app/sessions.py`), plus escalations and leads (§4).
-  Retention window below is enforced by a `pg_cron` purge job (one-time setup script,
-  `backend/scripts/retention_purge.sql`), and disclosed via a privacy notice line on the widget.
+  Retention window below is enforced by a GitHub Actions cron
+  (`.github/workflows/retention-purge.yml`) hitting `POST /internal/retention-purge` daily
+  (`app/sessions.py:purge_old_messages`), and disclosed via a privacy notice line on the widget.
 - Aggregate usage stats (requests, tokens, estimated cost — `app/usage_stats.py`), independent of
   raw transcript retention — backs `/weekly`/`/stats` (§3.4).
 - No third-party sharing/selling of conversation data.
@@ -102,7 +103,7 @@ the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's
 
 | Data | Retention | Notes |
 |---|---|---|
-| Conversation transcripts | 90 days, then hard-deleted | nightly `pg_cron` purge job |
+| Conversation transcripts | 90 days, then hard-deleted | daily GitHub Actions purge job |
 | Escalation + contact info (leads) | Kept indefinitely (it's a lead, not a transcript) | separate table, only populated if user opts in by leaving contact |
 | Aggregate usage stats (counts, tokens, cost) | Kept indefinitely | no PII, needed for trend reporting |
 
