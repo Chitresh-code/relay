@@ -43,10 +43,19 @@ export function ChatView({
   onReset: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   }, [messages, isTyping]);
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    // only keep auto-scrolling if the user hasn't deliberately scrolled away from the bottom
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box" }}>
@@ -86,7 +95,7 @@ export function ChatView({
         </button>
       </div>
 
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "26px 22px" }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", padding: "26px 22px" }}>
         <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
           {messages.map((m) =>
             m.role === "user" ? (

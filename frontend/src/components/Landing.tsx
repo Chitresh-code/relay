@@ -117,13 +117,26 @@ export function Landing({
           display: "flex",
           gap: 14,
           flexWrap: "wrap",
+          justifyContent: "center",
         }}
       >
         <span>new_delhi_in</span>
         <span>·</span>
-        <span>gychitresh1290@gmail.com</span>
+        <a href="mailto:gychitresh1290@gmail.com" style={{ color: "inherit", textDecoration: "none" }}>
+          gychitresh1290@gmail.com
+        </a>
         <span>·</span>
-        <span>linkedin.com/in/chitresh-gyanani</span>
+        <a href="https://linkedin.com/in/chitresh-gyanani" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
+          linkedin.com/in/chitresh-gyanani
+        </a>
+        <span>·</span>
+        <a href="https://github.com/Chitresh-code" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
+          github.com/Chitresh-code
+        </a>
+        <span>·</span>
+        <a href="https://leetcode.com/u/chitresh_g/" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
+          leetcode.com/chitresh_g
+        </a>
       </div>
     </div>
   );
