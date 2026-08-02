@@ -6,13 +6,15 @@ from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from .knowledge import PROFILE
+from .github import fetch_recent_repos
+from .knowledge import PROFILE, RESUME_INFO, SYSTEM_PROMPT_TEMPLATE
 
 # Standard OpenAI SDK env var names, kept generic on purpose: swapping providers (OpenRouter
 # free tier now, straight OpenAI or anything else OpenAI-compatible later) is just an env var
 # change, no code change. Defaults point at OpenRouter's free tier.
 BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
-MODEL_NAME = os.environ.get("OPENAI_RESPONSES_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+MODEL_NAME = os.environ.get("OPENAI_RESPONSES_MODEL", "openrouter/free")
+AGENT_NAME = os.environ.get("AGENT_NAME", "Relay")
 
 _client = AsyncOpenAI(base_url=BASE_URL, api_key=os.environ["OPENAI_API_KEY"])
 set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not relevant off-OpenAI
@@ -21,6 +23,23 @@ set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not rel
 # MultiProvider splits bare model strings on "/" as a provider prefix, which misreads
 # OpenRouter ids like "meta-llama/llama-3.3-70b-instruct:free" as prefix "meta-llama".
 MODEL = OpenAIChatCompletionsModel(model=MODEL_NAME, openai_client=_client)
+
+
+async def _describe_from_readme(readme_text: str) -> str:
+    """One-off summarization call (not the tool-calling agent) for repos GitHub gave no description."""
+    resp = await _client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {
+                "role": "system",
+                "content": "Summarize this GitHub repo README in one concise sentence (max 25 words) "
+                "describing what the project does. Reply with only the sentence.",
+            },
+            {"role": "user", "content": readme_text},
+        ],
+        max_tokens=60,
+    )
+    return (resp.choices[0].message.content or "").strip()
 
 UI_TOOL_NAMES = {
     "show_skills",
@@ -37,13 +56,6 @@ UI_TOOL_NAMES = {
 class SkillGroup(BaseModel):
     category: str
     skills: list[str]
-
-
-class ProjectItem(BaseModel):
-    title: str
-    year: str
-    description: str
-    tech: list[str]
 
 
 class ExperienceItem(BaseModel):
@@ -71,8 +83,8 @@ def show_skills(groups: list[SkillGroup]) -> str:
 
 
 @function_tool
-def show_projects(items: list[ProjectItem]) -> str:
-    """Render project cards."""
+def show_projects() -> str:
+    """Render project cards: the 5 most recently updated public GitHub repos, fetched live."""
     return "Shown."
 
 
@@ -95,8 +107,8 @@ def show_contact(items: list[ContactItem]) -> str:
 
 
 @function_tool
-def show_resume(name: str, format: str, updated: str, size: str, url: str) -> str:
-    """Render a resume download card."""
+def show_resume() -> str:
+    """Render the resume view/download card. Call when the user asks for the resume, CV, or a download."""
     return "Shown."
 
 
@@ -108,26 +120,14 @@ def show_info(quote: str) -> str:
 
 @function_tool
 def request_contact(reason: str) -> str:
-    """Render an inline contact-capture form when a question needs Chitresh directly."""
+    """Render an inline contact-capture form when a question needs the profile owner directly."""
     return "Requested."
 
 
-SYSTEM_PROMPT = f"""You are Relay, an assistant answering recruiter questions about \
-Chitresh Gyanani, grounded ONLY in the profile below. Never invent experience, dates, \
-or claims not present here.
-
-Call at most one UI tool per reply, and only when it genuinely helps (e.g. a list of \
-projects warrants show_projects). A plain conversational answer needs no tool call.
-
-If a question falls outside this profile, or the recruiter clearly wants to talk to \
-Chitresh directly, call request_contact with a short reason instead of guessing.
-
---- PROFILE ---
-{PROFILE}
-"""
+SYSTEM_PROMPT = SYSTEM_PROMPT_TEMPLATE.replace("{agent_name}", AGENT_NAME).replace("{profile}", PROFILE)
 
 agent = Agent(
-    name="Relay",
+    name=AGENT_NAME,
     instructions=SYSTEM_PROMPT,
     model=MODEL,
     tools=[
@@ -145,6 +145,7 @@ agent = Agent(
 
 async def stream_reply(history: list[dict[str, str]]):
     """Yields ("token" | "component" | "error", payload) tuples for the SSE layer."""
+    emitted_tools: set[str] = set()
     try:
         result = Runner.run_streamed(agent, input=history)
         async for event in result.stream_events():
@@ -156,7 +157,24 @@ async def stream_reply(history: list[dict[str, str]]):
                 item = event.item
                 if item.type == "tool_call_item":
                     name = getattr(item.raw_item, "name", None)
-                    if name in UI_TOOL_NAMES:
+                    # Enforce "at most one UI tool call per turn" server-side too — small/free
+                    # models don't always follow that instruction, and repeat calls would mean
+                    # redundant GitHub/README/LLM work for show_projects.
+                    if name in emitted_tools:
+                        continue
+                    if name is not None:
+                        emitted_tools.add(name)
+                    if name == "show_resume":
+                        # Real file metadata/URL, never left to the model to invent.
+                        yield "component", {"tool": name, "content": RESUME_INFO}
+                    elif name == "show_projects":
+                        # Live GitHub data, not model-generated — repo names/links must be real.
+                        try:
+                            items = await fetch_recent_repos(describe=_describe_from_readme)
+                        except Exception:
+                            items = []
+                        yield "component", {"tool": name, "content": {"items": items}}
+                    elif name in UI_TOOL_NAMES:
                         try:
                             args = json.loads(item.raw_item.arguments or "{}")
                         except json.JSONDecodeError:
