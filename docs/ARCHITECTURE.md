@@ -214,12 +214,15 @@ is exactly the problem that pushed `notes` onto Neon (§6). Planned tables, same
 
 ## 9. Rate limiting
 
-**Status: not yet built** — `/chat` currently has zero request throttling, which is a real risk before
-this goes public (a looped client can burn through OpenRouter quota, or a real bill on a paid
-embedding model). Planned: Redis-backed sliding window per session/IP on `/chat` (e.g., N
-requests/minute, M/day) via Upstash. Even with a free chat model, this stays important — free-tier
-models on OpenRouter carry their own request-rate caps shared across your whole app, so one abusive
-client can lock out real recruiters if it's not capped per-session first.
+**Status: shipped** — `POST /chat` and `POST /contact` are capped per client IP (20/min, 200/day,
+fixed window) via `app/rate_limit.py`, over any REST-compatible Redis (`REDIS_REST_URL`/
+`REDIS_REST_TOKEN` — Upstash's REST API is the reference implementation, no vendor-specific env
+names). IP rather than session, since `session_id` is client-controlled and trivially resettable
+(`localStorage`). Fails open (allows the request) on Redis errors or when the env vars are unset —
+a rate limiter shouldn't itself be a single point of failure, but that also means it's inert until
+configured. Even with a free chat model this matters — free-tier models on OpenRouter carry their
+own request-rate caps shared across the whole app, so one abusive client can lock out real
+recruiters if it's not capped per-IP first.
 
 ## 10. Naming — finalized: Relay
 

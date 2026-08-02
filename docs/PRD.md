@@ -61,9 +61,10 @@ response. There's no separate `escalate` tool — `request_contact` renders the 
 it is what actually escalates:
 1. Agent tells the user it's looping the profile owner in, and renders `request_contact` to collect
    an email (optional but encouraged — without it, the profile owner can't respond back).
-2. **Shipped:** submitting the form (`POST /contact`) sends the admin a Telegram alert with the
-   question, conversation context, and contact info if given; if an email was left, the recruiter
-   gets an immediate receipt via Resend confirming it was received.
+2. **Shipped:** submitting the form (`POST /contact`) sends the admin a Telegram alert with an
+   LLM-generated summary of what the recruiter actually wants (role/opportunity, their question,
+   why it needed a human — not the raw transcript), plus contact info if given; if an email was
+   left, the recruiter gets an immediate receipt via Resend confirming it was received.
 3. **Planned:** the admin replies from Telegram, and that reply is forwarded to the recruiter's
    email (via Resend) as the actual personal response.
 

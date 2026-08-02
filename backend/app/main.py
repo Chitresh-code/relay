@@ -10,15 +10,16 @@ from dotenv import load_dotenv
 
 load_dotenv()  # must run before .agent imports os.environ["OPENAI_API_KEY"]
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .agent import stream_reply
+from .agent import stream_reply, summarize_for_admin
 from .knowledge import CONTENT_DIR
 from .mailer import send_receipt_email
+from .rate_limit import check_rate_limit, client_ip
 from .telegram_bot import notify_admin
 from .telegram_bot import poll as telegram_poll
 
@@ -79,7 +80,9 @@ def sse(event: str, data: dict) -> str:
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
+    if not await check_rate_limit(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests — try again in a minute.")
     logger.info("chat request session=%s chars=%d", req.session_id, len(req.message))
     history = _sessions.setdefault(req.session_id, [])
     history.append({"role": "user", "content": req.message})
@@ -98,17 +101,16 @@ async def chat(req: ChatRequest):
 
 
 @app.post("/contact")
-async def contact(req: ContactRequest):
+async def contact(req: ContactRequest, request: Request):
     """Escalation handoff from the request_contact UI card: alerts the admin on Telegram and,
     if an email was left, sends the recruiter an immediate receipt via Resend."""
+    if not await check_rate_limit(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests — try again in a minute.")
     logger.info("contact request session=%s has_email=%s", req.session_id, bool(req.email))
     history = _sessions.get(req.session_id, [])
-    last_question = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    summary = await summarize_for_admin(history, req.reason)
 
-    lines = [f"Escalation: {req.reason}"]
-    if last_question:
-        lines.append(f"Last question: {last_question}")
-    lines.append(f"Email: {req.email or '(not given)'}")
+    lines = [f"Escalation: {summary}", f"Email: {req.email or '(not given)'}"]
     await notify_admin("\n".join(lines))
 
     if req.email:

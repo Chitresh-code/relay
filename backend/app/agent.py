@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 
 from agents import Agent, Runner, function_tool, set_tracing_disabled
@@ -20,6 +21,8 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "Relay")
 # behind the same OPENAI_BASE_URL/OPENAI_API_KEY, so point those at a provider that serves it
 # (or override this) if you're staying on OpenRouter's free chat tier for everything else.
 EMBED_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "openai/text-embedding-3-small")
+
+logger = logging.getLogger("relay.agent")
 
 _client = AsyncOpenAI(base_url=BASE_URL, api_key=os.environ["OPENAI_API_KEY"])
 set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not relevant off-OpenAI
@@ -50,6 +53,33 @@ async def _describe_from_readme(readme_text: str) -> str:
 async def _embed(text: str) -> list[float]:
     resp = await _client.embeddings.create(model=EMBED_MODEL, input=text)
     return resp.data[0].embedding
+
+
+async def summarize_for_admin(history: list[dict[str, str]], reason: str) -> str:
+    """One-off call briefing the admin on an escalation: what the recruiter actually wants,
+    not the raw transcript. Falls back to the agent's own escalation reason on any failure —
+    this is a convenience on top of the alert, not something that should ever block it."""
+    if not history:
+        return reason
+    transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+    try:
+        resp = await _client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You're briefing the profile owner on an incoming recruiter escalation. "
+                    "In 2-3 sentences: what role/opportunity (if mentioned), what they're actually "
+                    "asking, and why it needed a human. Be concrete, no filler, no greeting.",
+                },
+                {"role": "user", "content": f"Escalation reason: {reason}\n\nConversation:\n{transcript}"},
+            ],
+            max_tokens=150,
+        )
+        return (resp.choices[0].message.content or reason).strip()
+    except Exception:
+        logger.exception("Admin summary generation failed — falling back to raw reason")
+        return reason
 
 
 UI_TOOL_NAMES = {

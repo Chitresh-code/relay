@@ -24,7 +24,8 @@ export async function* streamChat(sessionId: string, message: string): AsyncGene
   }
 
   if (!res.ok || !res.body) {
-    yield { type: "error", message: `Request failed (${res.status})` };
+    const message = res.status === 429 ? "You're sending messages too fast — try again in a minute." : `Request failed (${res.status})`;
+    yield { type: "error", message };
     return;
   }
 
