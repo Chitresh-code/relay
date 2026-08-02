@@ -167,16 +167,18 @@ person-specific inputs — swap those three plus the `CANDIDATE_NAME`/`GITHUB_US
 rewritten (new role, new project, availability). `app/telegram_bot.py` long-polls Telegram for
 messages from a single admin `chat_id` (`TELEGRAM_ADMIN_CHAT_ID` — anyone else is ignored), rewrites
 each one into a clean note via one LLM call, and holds it pending until the admin replies "save" (or
-"cancel"). Saved notes go into `app/context_store.py`: a SQLite table (`backend/data/context.db`,
-gitignored) storing `(text, embedding)`. The `search_context` tool lets the agent embed the
-recruiter's question and cosine-match it against those notes before answering — a real RAG step, just
-without a dedicated vector DB: brute-force cosine over a Python list is fine at the scale of a
-personal notes table (dozens to low hundreds of rows).
+"cancel"). Saved notes go into `app/context_store.py`: a `notes(text, embedding)` table in Neon
+Postgres (`DATABASE_URL`) — not SQLite, since FastAPI Cloud/Vercel are serverless and a local file
+wouldn't persist (or be shared) across instances. `DATABASE_URL` unset -> notes are silently dropped
+and `search_context` always returns nothing, rather than crashing (same graceful-disable pattern as
+the Telegram bot with no token). The `search_context` tool lets the agent embed the recruiter's
+question and cosine-match it against those notes before answering — a real RAG step, just without a
+dedicated vector DB: brute-force cosine over a Python list is fine at the scale of a personal notes
+table (dozens to low hundreds of rows).
 
 **Upgrade path if the notes table grows** (thousands of rows, this stops being "brute-force fast
-enough"): swap `context_store.py`'s scan for `sqlite-vec` or, if it's already moved to Postgres for
-other reasons (§8), `pgvector` — same `add_note`/`search_notes` interface, just a different backing
-store.
+enough"): Neon already supports the `pgvector` extension, so swap `context_store.py`'s scan for its
+`<=>` operator — same `add_note`/`search_notes` interface, just the query changes.
 
 ## 7. Observability — why no dedicated LLM ops platform (yet)
 
