@@ -8,19 +8,19 @@ Status: Draft v1 · companion to [[PRD.md]]
 flowchart TD
     Recruiter([Recruiter]) -->|chats with| Widget["Web widget (SPA)<br/>Vite + React<br/>hosted: Vercel"]
     Widget -->|POST /chat| Backend["FastAPI backend<br/>OpenAI Agents SDK via OpenRouter<br/>hosted: FastAPI Cloud"]
-    Widget -->|"POST /contact - shipped"| Backend
+    Widget -->|POST /contact| Backend
 
-    Backend <--> DB[("Neon Postgres<br/>notes (shipped) + conversations, leads, stats (planned)")]
-    Backend <--> Redis[("Upstash Redis<br/>rate limiting — planned")]
+    Backend <--> DB[("Neon Postgres<br/>notes, conversations, messages, escalations, leads (shipped)<br/>usage_stats (planned)")]
+    Backend <--> Redis[("REST-compatible Redis<br/>rate limiting (shipped)")]
     Backend -->|OpenAI-compatible API| OpenRouter["OpenRouter<br/>free-tier models"]
 
-    Backend -->|"notify_admin - shipped"| TG["Telegram Bot API<br/>admin bot, long-polling"]
-    Backend -->|"search_context - shipped"| DB
-    TG -->|alert - shipped| Admin([Admin])
-    Admin -->|reply / notes| TG
-    TG -->|"forwarded via - planned"| Resend["Resend<br/>receipt email (shipped) + reply-to-recruiter (planned)"]
-    Backend -->|"receipt email - shipped, if contact left"| Resend
-    Resend -->|if contact left| Recruiter
+    Backend -->|notify_admin| TG["Telegram Bot API<br/>admin bot + admin agent, long-polling"]
+    Backend -->|search_context| DB
+    TG -->|escalation alert| Admin([Admin])
+    Admin -->|reply / chat| TG
+    TG -->|forwards reply| Resend["Resend<br/>receipt email + reply-forwarding + outreach (send_email tool)"]
+    Backend -->|receipt email, if contact left| Resend
+    Resend -->|receipt / reply| Recruiter
 
     DB -->|"pg_cron - planned"| Purge["retention purge (in-DB)"]
     Cron["GitHub Actions<br/>free cron — planned"] -->|triggers| Digest["/internal/weekly-digest"]
@@ -42,10 +42,10 @@ flowchart TD
 | Backend hosting                                 | **FastAPI Cloud**, free tier                                                                    | requested; purpose-built for FastAPI, avoids configuring a generic PaaS                                                                                                                                                                                                                                                                            |
 | Frontend                                        | Vite + React SPA (not Next.js)                                                                  | it's a single chat page, not a multi-route site — a static SPA is less to configure/deploy than a framework with SSR you don't need                                                                                                                                                                                                                |
 | Frontend hosting                                | **Vercel**, free/Hobby tier                                                                     | requested; trivial static deploy, free custom subdomain                                                                                                                                                                                                                                                                                            |
-| Database                                        | **Neon Postgres**, free tier                                                                    | requested; shipped for context notes (§6); also gives an upgrade path to `pgvector` in the same DB if the notes table ever needs real vector search — no new service                                                                                                                                                                              |
-| Cache / rate limit                              | **Upstash Redis**, free tier — *planned, not built (§9)*                                        | requested; serverless-friendly (HTTP-based), enough headroom for personal-scale traffic                                                                                                                                                                                                                                                            |
-| Email                                           | **Resend**, free tier — *receipt email shipped, admin-reply-forwarding planned*                 | requested; receipt email confirms the recruiter's message was received; forwarding the admin's Telegram reply back to them is the remaining piece                                                                                                                                                                                                |
-| Admin interface                                 | **Telegram Bot API**, raw `httpx` calls, long-polling (`getUpdates`) — shipped for notes (§6), commands planned (§14) | no separate library needed for ~2 endpoints; long-polling avoids requiring a public webhook URL for a single-admin bot, unlike the originally planned webhook mode                                                                                                                                                                 |
+| Database                                        | **Neon Postgres**, free tier                                                                    | requested; shipped for context notes, sessions, and escalations/leads (§6/§8); also gives an upgrade path to `pgvector` in the same DB if the notes table ever needs real vector search — no new service                                                                                                                                                                              |
+| Cache / rate limit                              | Any REST-compatible Redis (Upstash is the reference implementation), free tier — *shipped (§9)* | requested; serverless-friendly (HTTP-based), enough headroom for personal-scale traffic                                                                                                                                                                                                                                                            |
+| Email                                           | **Resend**, free tier — *shipped*: receipt, admin-reply-forwarding, and admin-agent outreach (`send_email`), all resume-attached, `Reply-To` configurable separately from the sending address | requested; receipt confirms the recruiter's message was received; reply-forwarding is the admin's actual personal response; outreach lets the admin agent send follow-ups directly                                                                                                                                                                                                |
+| Admin interface                                 | **Telegram Bot API**, raw `httpx` calls, long-polling (`getUpdates`) — shipped: escalation alerts + admin agent (§6), commands planned (§14) | no separate library needed for ~2 endpoints; long-polling avoids requiring a public webhook URL for a single-admin bot, unlike the originally planned webhook mode                                                                                                                                                                 |
 | Scheduled jobs (weekly digest, retention purge) | **Split**: retention purge via **`pg_cron`** in Neon; weekly digest via **GitHub Actions cron** hitting an internal endpoint — *planned, not built (§12)* | purge is pure SQL, no reason to leave the database for it; digest needs an outbound Telegram call, which `pg_cron` alone can't do                                                                                                                                                                                                 |
 | Knowledge base                                  | Plain text (resume + curated bio doc + cached GitHub summary) injected into the agent's context, plus a small notes RAG layer on Neon (§6) | small enough to fit directly — see §6                                                                                                                                                                                                                                                                                              |
 | Observability                                   | Structured logs + a `usage_stats` table in Postgres, queried by `/stats` and the weekly digest — *planned, not built (§8)* | avoids standing up a third-party LLM observability platform for what's currently a personal project; see §7 for the upgrade path                                                                                                                                                                                                  |
@@ -175,16 +175,29 @@ person-specific inputs — swap those three plus the `CANDIDATE_NAME`/`GITHUB_US
 
 **Context notes (admin Telegram bot)**: the profile is static, but things change faster than it gets
 rewritten (new role, new project, availability). `app/telegram_bot.py` long-polls Telegram for
-messages from a single admin `chat_id` (`TELEGRAM_ADMIN_CHAT_ID` — anyone else is ignored), rewrites
-each one into a clean note via one LLM call, and holds it pending until the admin replies "save" (or
-"cancel"). Saved notes go into `app/context_store.py`: a `notes(text, embedding)` table in Neon
-Postgres (`DATABASE_URL`) — not SQLite, since FastAPI Cloud/Vercel are serverless and a local file
-wouldn't persist (or be shared) across instances. `DATABASE_URL` unset -> notes are silently dropped
-and `search_context` always returns nothing, rather than crashing (same graceful-disable pattern as
-the Telegram bot with no token). The `search_context` tool lets the agent embed the recruiter's
-question and cosine-match it against those notes before answering — a real RAG step, just without a
-dedicated vector DB: brute-force cosine over a Python list is fine at the scale of a personal notes
-table (dozens to low hundreds of rows).
+messages from a single admin `chat_id` (`TELEGRAM_ADMIN_CHAT_ID` — anyone else is ignored). Anything
+that isn't a reply to an escalation alert (§3.3/§9 below) goes to `app/admin_agent.py` — a second,
+private Agents SDK agent (own tool set, same underlying `MODEL`) the admin chats with directly,
+with three tools:
+- `save_note` — rewrites rough input into a clean note and saves it, same effect the old
+  manual rewrite/confirm flow had, just conversational now
+- `get_session_history` — pulls a recruiter's full transcript by `session_id` (included in every
+  escalation alert, see §9) so the admin can ask the agent to summarize or recall context
+- `send_email` — drafts and sends outreach/follow-up emails via `app/mailer.py`'s
+  `send_custom_email` (resume attached automatically, same as every other outgoing email)
+
+Saved notes go into `app/context_store.py`: a `notes(text, embedding)` table in Neon Postgres
+(`DATABASE_URL`) — not SQLite, since FastAPI Cloud/Vercel are serverless and a local file wouldn't
+persist (or be shared) across instances. `DATABASE_URL` unset -> notes are silently dropped and
+`search_context` always returns nothing, rather than crashing (same graceful-disable pattern as the
+Telegram bot with no token). The `search_context` tool lets the public-facing agent embed the
+recruiter's question and cosine-match it against those notes before answering — a real RAG step,
+just without a dedicated vector DB: brute-force cosine over a Python list is fine at the scale of a
+personal notes table (dozens to low hundreds of rows).
+
+The admin agent's own chat history is a separate in-memory-per-process dict
+(`telegram_bot._admin_history`), not persisted to Postgres — it's a scratchpad conversation with
+the admin, not a recruiter transcript, so losing it on restart isn't a real cost.
 
 **Upgrade path if the notes table grows** (thousands of rows, this stops being "brute-force fast
 enough"): Neon already supports the `pgvector` extension, so swap `context_store.py`'s scan for its
@@ -203,8 +216,12 @@ touching the data model above.
 ## 8. Data model (minimum viable)
 
 **Status: conversations/messages/escalations/leads shipped; usage_stats still planned.** All tables
-live in the same Neon database, one shared connection pool (`app/db.py`), schema applied via
-`CREATE TABLE IF NOT EXISTS` on first connect — no separate migration tool for a schema this size.
+live in the same Neon database, one shared connection pool (`app/db.py`). Schema is applied via
+`CREATE TABLE IF NOT EXISTS` on first connect — but that's a no-op against a table that already
+exists, even one that predates a newer column, so adding a column to an existing table also needs
+an explicit `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` alongside it (see `leads.name`/
+`leads.telegram_message_id` in `app/db.py` for the pattern). No separate migration tool for a
+schema this size.
 
 Shipped (`app/sessions.py`):
 - `conversations(id, session_id, started_at, last_message_at)`
@@ -213,8 +230,11 @@ Shipped (`app/sessions.py`):
 - `escalations(id, conversation_id, reason, created_at)` — one row per `/contact` submission,
   with or without an email, so dead-end escalations can be told apart from ones that became usable
   leads (PRD §7 success metric)
-- `leads(id, escalation_id, email, created_at)` — only inserted when an email was given; will **not**
-  be purged with the transcript retention job once that exists (PRD §4)
+- `leads(id, escalation_id, email, name, telegram_message_id, created_at)` — only inserted when an
+  email was given; will **not** be purged with the transcript retention job once that exists (PRD
+  §4). `telegram_message_id` is the admin alert's Telegram message ID, so a reply to that message
+  can be matched back to this lead's email (`get_lead_by_message_id`, used by
+  `app/telegram_bot.py:poll`).
 
 Planned, deferred to the Governance & ops roadmap phase since nothing consumes it yet (no `/stats`
 endpoint, no digest job):

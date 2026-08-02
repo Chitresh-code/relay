@@ -67,7 +67,9 @@ async def record_escalation(session_id: str, reason: str) -> int | None:
             )
 
 
-async def record_lead(escalation_id: int | None, email: str) -> None:
+async def record_lead(
+    escalation_id: int | None, email: str, name: str = "", telegram_message_id: int | None = None
+) -> None:
     if escalation_id is None:
         return
     pool = await get_pool()
@@ -75,5 +77,21 @@ async def record_lead(escalation_id: int | None, email: str) -> None:
         return
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO leads (escalation_id, email) VALUES ($1, $2)", escalation_id, email
+            "INSERT INTO leads (escalation_id, email, name, telegram_message_id) VALUES ($1, $2, $3, $4)",
+            escalation_id, email, name, telegram_message_id,
         )
+
+
+async def get_lead_by_message_id(message_id: int) -> dict[str, str] | None:
+    """Looks up the recruiter's name/email from the Telegram message_id of the escalation alert
+    the admin is replying to — how the bot knows where to forward that reply (see
+    telegram_bot.py). ponytail: no in-memory fallback — reply-forwarding is simply unavailable
+    without Postgres, same as everything else in this module when DATABASE_URL is unset."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT name, email FROM leads WHERE telegram_message_id = $1", message_id
+        )
+    return {"name": row["name"], "email": row["email"]} if row else None

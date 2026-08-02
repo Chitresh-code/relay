@@ -52,30 +52,37 @@ kept here only as the original ask for context).
 ```
 
 ### 3.3 Human escalation (fallback to Telegram)
-**Status: partially built** — steps 1 and 2 below are shipped; step 3 (forwarding the admin's
-Telegram reply back to the recruiter) is still planned. See [[ROADMAP.md]].
+**Status: shipped**, full loop. See [[ROADMAP.md]].
 
 The agent calls `request_contact` when: the question is outside the knowledge base, the recruiter
 explicitly asks to talk to the profile owner, or there's clear hiring intent worth a personal
 response. There's no separate `escalate` tool — `request_contact` renders the card, and submitting
 it is what actually escalates:
 1. Agent tells the user it's looping the profile owner in, and renders `request_contact` to collect
-   an email (optional but encouraged — without it, the profile owner can't respond back).
-2. **Shipped:** submitting the form (`POST /contact`) sends the admin a Telegram alert with an
-   LLM-generated summary of what the recruiter actually wants (role/opportunity, their question,
-   why it needed a human — not the raw transcript), plus contact info if given; if an email was
-   left, the recruiter gets an immediate receipt via Resend confirming it was received.
-3. **Planned:** the admin replies from Telegram, and that reply is forwarded to the recruiter's
-   email (via Resend) as the actual personal response.
+   a name and email (both optional but encouraged — without an email, the profile owner can't
+   respond back).
+2. Submitting the form (`POST /contact`) sends the admin a Telegram alert with an LLM-generated
+   summary of what the recruiter actually wants (role/opportunity, their question, why it needed a
+   human — not the raw transcript), the `session_id` (so the admin can pull the full transcript via
+   the admin agent's `get_session_history` tool, §3.4), and name/contact info if given; if an email
+   was left, the recruiter gets an immediate receipt via Resend — personally worded and signed (not
+   template-y), with the resume PDF attached.
+3. The admin replies to that Telegram alert, and the reply is forwarded to the recruiter's email
+   (also resume-attached) as the actual personal response — the admin's own words, not a canned
+   template. The Telegram message ID of the alert is remembered against the lead so a reply to it
+   can be matched back to the right recruiter (`leads.telegram_message_id`).
 
 ### 3.4 Telegram as admin interface
 The admin's Telegram bot (a *second*, private bot — the user-facing web widget is not on Telegram) is
 the control plane. **Status: partially built** — see [[ROADMAP.md]] for what's shipped vs. planned.
-- **Shipped**: admin-only auth (single `chat_id`), conversational note-taking (LLM rewrite → confirm
-  → saved), retrieved by the agent via `search_context`.
+- **Shipped**: admin-only auth (single `chat_id`), real-time escalation alerts (§3.3), and a private
+  admin agent (`app/admin_agent.py`) the admin chats with directly — it can save notes (retrieved by
+  the public agent via `search_context`), look up any recruiter session's full transcript
+  (`get_session_history`), and draft/send outreach or follow-up emails (`send_email`, resume
+  attached automatically).
 - **Planned**: `/health`, `/stats` (today's traffic, sessions, token/cost usage), `/weekly` (on-demand
   digest; also auto-pushed every Monday — traffic summary, top question topics, LLM cost, a
-  conversation recap), and real-time escalation alerts (§3.3).
+  conversation recap).
 
 ### 3.5 Observability & governance
 **Status: partially built** — see [[ROADMAP.md]].

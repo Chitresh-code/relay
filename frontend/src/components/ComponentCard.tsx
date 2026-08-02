@@ -243,6 +243,7 @@ function InfoCardView({ t, quote }: { t: Theme; quote: string }) {
 }
 
 function RequestContactCardView({ t, sessionId, reason }: { t: Theme; sessionId: string; reason: string }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -250,11 +251,22 @@ function RequestContactCardView({ t, sessionId, reason }: { t: Theme; sessionId:
     return (
       <div style={cardStyle(t)}>
         <div style={{ font: "13.5px system-ui,sans-serif", color: t.textBody }}>
-          Thanks — you'll hear back{email ? ` at ${email}` : ""}.
+          Thanks{name ? `, ${name}` : ""} — you'll hear back{email ? ` at ${email}` : ""}.
         </div>
       </div>
     );
   }
+
+  const inputStyle = {
+    flex: 1,
+    border: `1px solid ${t.inputBorder}`,
+    background: t.inputBg,
+    borderRadius: 4,
+    padding: "8px 10px",
+    font: "12.5px 'JetBrains Mono',monospace",
+    color: t.textPrimary,
+    outline: "none",
+  };
 
   return (
     <div style={{ ...cardStyle(t), display: "flex", flexDirection: "column", gap: 10 }}>
@@ -263,40 +275,40 @@ function RequestContactCardView({ t, sessionId, reason }: { t: Theme; sessionId:
         onSubmit={(e) => {
           e.preventDefault();
           setSubmitted(true);
-          submitContact(sessionId, reason, email).catch(() => {});
+          submitContact(sessionId, reason, name, email).catch(() => {});
         }}
-        style={{ display: "flex", gap: 8 }}
+        style={{ display: "flex", flexDirection: "column", gap: 8 }}
       >
         <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@company.com (optional)"
-          style={{
-            flex: 1,
-            border: `1px solid ${t.inputBorder}`,
-            background: t.inputBg,
-            borderRadius: 4,
-            padding: "8px 10px",
-            font: "12.5px 'JetBrains Mono',monospace",
-            color: t.textPrimary,
-            outline: "none",
-          }}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="your name"
+          style={inputStyle}
         />
-        <button
-          type="submit"
-          style={{
-            border: "none",
-            cursor: "pointer",
-            background: t.accent,
-            color: t.panelBg,
-            font: "600 12px 'JetBrains Mono',monospace",
-            padding: "8px 14px",
-            borderRadius: 4,
-          }}
-        >
-          send
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com (optional)"
+            style={inputStyle}
+          />
+          <button
+            type="submit"
+            style={{
+              border: "none",
+              cursor: "pointer",
+              background: t.accent,
+              color: t.panelBg,
+              font: "600 12px 'JetBrains Mono',monospace",
+              padding: "8px 14px",
+              borderRadius: 4,
+            }}
+          >
+            send
+          </button>
+        </div>
       </form>
     </div>
   );
