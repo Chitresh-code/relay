@@ -63,12 +63,15 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   (`app/agent.py`, `app/admin_agent.py`, `app/usage_stats.py`) — same OpenRouter model, same tool
   set and streaming UX, model-agnostic runtime instead of OpenAI's own agent framework. See
   [[ARCHITECTURE.md]] §2.
+- **Deployed.** Backend on FastAPI Cloud (`https://relay.fastapicloud.dev`, app `relay`), frontend
+  on Vercel (`https://relay-ten-rho.vercel.app`, project `relay`), both free tier. Custom domain
+  `relay.chitreshgyanani.com` is added to the Vercel project but not yet DNS-verified — needs a
+  CNAME record (`relay` → `cname.vercel-dns.com`, DNS-only if proxied through Cloudflare) added at
+  the registrar/DNS provider. `RELAY_BASE_URL`/`RELAY_INTERNAL_API_KEY` GitHub Actions secrets set
+  and both cron workflows (`weekly-digest.yml`, `retention-purge.yml`) verified working against the
+  live backend.
 
 ## Planned — roughly in build order
-
-### Deploy
-- FastAPI Cloud (backend) + Vercel (frontend), both free tier.
-- Point a personal subdomain at the deployed frontend, final DNS.
 
 ### Admin agent context + response quality
 - Persist `telegram_bot._admin_history` to Postgres (same pattern as `app/sessions.py`) instead of
