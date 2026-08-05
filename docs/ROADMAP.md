@@ -64,12 +64,11 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   set and streaming UX, model-agnostic runtime instead of OpenAI's own agent framework. See
   [[ARCHITECTURE.md]] §2.
 - **Deployed.** Backend on FastAPI Cloud (`https://relay.fastapicloud.dev`, app `relay`), frontend
-  on Vercel (`https://relay-ten-rho.vercel.app`, project `relay`), both free tier. Custom domain
-  `relay.chitreshgyanani.com` is added to the Vercel project but not yet DNS-verified — needs a
-  CNAME record (`relay` → `cname.vercel-dns.com`, DNS-only if proxied through Cloudflare) added at
-  the registrar/DNS provider. `RELAY_BASE_URL`/`RELAY_INTERNAL_API_KEY` GitHub Actions secrets set
-  and both cron workflows (`weekly-digest.yml`, `retention-purge.yml`) verified working against the
-  live backend.
+  on Vercel (`https://relay-ten-rho.vercel.app`, project `relay`), both free tier, live at the
+  final public URL `https://relay.chitreshgyanani.com` (CNAME `relay` → `cname.vercel-dns.com`).
+  `ALLOWED_ORIGINS` is scoped to just the custom domain. `RELAY_BASE_URL`/`RELAY_INTERNAL_API_KEY`
+  GitHub Actions secrets set and both cron workflows (`weekly-digest.yml`, `retention-purge.yml`)
+  verified working against the live backend.
 - Admin Telegram agent's chat history now persists to Postgres (`telegram_bot._handle_message`,
   same `conversations`/`messages` tables as recruiter sessions, under a synthetic `admin:{chat_id}`
   `session_id`) instead of an in-memory-per-process dict that reset on every backend restart. See
