@@ -311,12 +311,18 @@ anyway. GitHub Actions cron (`.github/workflows/weekly-digest.yml`, Monday 14:00
 `POST /internal/weekly-digest`. Shares its digest-building logic
 (`app/telegram_bot.py:build_weekly_digest`) with the on-demand `/weekly` Telegram command (§14).
 
-## 13. CI
+## 13. CI/CD
 
 **Shipped.** `.github/workflows/ci.yml` runs on every PR and push to `main`: backend job (`uv sync` +
 `tests.test_smoke` + `tests.test_context_store`) and frontend job (`tsc --noEmit` + `npm run build`).
 Both jobs are required status checks on the `main` branch protection rule, so a red PR literally
 can't merge, not just "shouldn't."
+
+Deploys are automatic on push to `main`, one mechanism per side: `.github/workflows/deploy.yml`
+runs `uv run fastapi deploy` against the backend (auth via the `FASTAPI_CLOUD_TOKEN`/
+`FASTAPI_CLOUD_APP_ID` repo secrets, provisioned by `fastapi cloud ci setup`); the frontend
+deploys via Vercel's native GitHub integration (connected directly in the Vercel dashboard, no
+workflow file needed on that side).
 
 ## 14. Telegram bot commands
 
