@@ -8,7 +8,13 @@ from .admin_agent import run_admin_agent
 from .agent import summarize_weekly_topics
 from .db import get_pool
 from .mailer import send_reply_email
-from .sessions import get_lead_by_message_id, get_period_counts, get_recent_user_messages
+from .sessions import (
+    append_message,
+    get_history,
+    get_lead_by_message_id,
+    get_period_counts,
+    get_recent_user_messages,
+)
 from .usage_stats import get_range_stats
 
 logger = logging.getLogger("relay.telegram")
@@ -18,10 +24,6 @@ ADMIN_CHAT_ID = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 ADMIN_HISTORY_WINDOW = 20
-
-# ponytail: single admin, single chat -> an in-memory per-process conversation is enough, no
-# sessions table needed. Lost on restart; that's fine for a scratchpad chat with the admin agent.
-_admin_history: dict[int, list[dict[str, str]]] = {}
 
 
 async def _send(client: httpx.AsyncClient, chat_id: int, text: str) -> int | None:
@@ -69,10 +71,15 @@ COMMANDS = {"/health": _cmd_health, "/stats": _cmd_stats, "/weekly": build_weekl
 
 
 async def _handle_message(client: httpx.AsyncClient, chat_id: int, text: str) -> None:
-    history = _admin_history.setdefault(chat_id, [])
+    """Admin chat history rides the same conversations/messages tables as recruiter sessions
+    (app/sessions.py) under a synthetic `admin:{chat_id}` session_id — so it survives backend
+    restarts instead of resetting every time, subject to the same 90-day retention purge."""
+    session_id = f"admin:{chat_id}"
+    history = await get_history(session_id)
     history.append({"role": "user", "content": text})
+    await append_message(session_id, "user", text)
     reply = await run_admin_agent(history[-ADMIN_HISTORY_WINDOW:])
-    history.append({"role": "assistant", "content": reply})
+    await append_message(session_id, "assistant", reply)
     await _send(client, chat_id, reply)
 
 
