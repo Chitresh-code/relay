@@ -80,6 +80,8 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   (`backend/scripts/eval_agent_quality.py`, `uv run python -m scripts.eval_agent_quality`) to
   spot-check that after future prompt/model changes — not part of CI since it makes real, billed
   LLM calls.
+- Auto-deploy on push to `main`: `.github/workflows/deploy.yml` deploys the backend to FastAPI
+  Cloud, Vercel's native GitHub integration deploys the frontend. See [[ARCHITECTURE.md]] §13.
 
 ## Planned — roughly in build order
 
