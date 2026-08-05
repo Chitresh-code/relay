@@ -70,13 +70,14 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   the registrar/DNS provider. `RELAY_BASE_URL`/`RELAY_INTERNAL_API_KEY` GitHub Actions secrets set
   and both cron workflows (`weekly-digest.yml`, `retention-purge.yml`) verified working against the
   live backend.
+- Admin Telegram agent's chat history now persists to Postgres (`telegram_bot._handle_message`,
+  same `conversations`/`messages` tables as recruiter sessions, under a synthetic `admin:{chat_id}`
+  `session_id`) instead of an in-memory-per-process dict that reset on every backend restart. See
+  [[ARCHITECTURE.md]] §6.
 
 ## Planned — roughly in build order
 
-### Admin agent context + response quality
-- Persist `telegram_bot._admin_history` to Postgres (same pattern as `app/sessions.py`) instead of
-  the in-memory-per-process dict — currently lost on every backend restart, which is why the admin
-  agent "forgets everything" and has to be re-prompted from scratch.
+### Response quality
 - Regression tests + prompt tuning for the public agent's free-text replies (outside the predefined
   UI-tool paths) — currently vague/not meaningful per user feedback.
 

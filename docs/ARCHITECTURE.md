@@ -195,9 +195,10 @@ recruiter's question and cosine-match it against those notes before answering �
 just without a dedicated vector DB: brute-force cosine over a Python list is fine at the scale of a
 personal notes table (dozens to low hundreds of rows).
 
-The admin agent's own chat history is a separate in-memory-per-process dict
-(`telegram_bot._admin_history`), not persisted to Postgres — it's a scratchpad conversation with
-the admin, not a recruiter transcript, so losing it on restart isn't a real cost.
+The admin agent's own chat history rides the same `conversations`/`messages` tables as recruiter
+sessions (§8), under a synthetic `admin:{chat_id}` `session_id` — originally an in-memory-per-process
+dict that reset on every backend restart, which in practice meant re-explaining context to the admin
+agent constantly. Subject to the same 90-day retention purge as recruiter transcripts (§12).
 
 **Upgrade path if the notes table grows** (thousands of rows, this stops being "brute-force fast
 enough"): Neon already supports the `pgvector` extension, so swap `context_store.py`'s scan for its
