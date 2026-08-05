@@ -74,12 +74,15 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   same `conversations`/`messages` tables as recruiter sessions, under a synthetic `admin:{chat_id}`
   `session_id`) instead of an in-memory-per-process dict that reset on every backend restart. See
   [[ARCHITECTURE.md]] §6.
+- Response-quality pass on the public agent's free-text replies (the ones outside the predefined
+  UI-tool paths) — added guidance to `content/system_prompt.md` so pure-conversation turns (a bare
+  greeting, opinion questions like fit/weaknesses/pitch) answer naturally and concretely instead of
+  reading like a canned bot line, and added a manual regression harness
+  (`backend/scripts/eval_agent_quality.py`, `uv run python -m scripts.eval_agent_quality`) to
+  spot-check that after future prompt/model changes — not part of CI since it makes real, billed
+  LLM calls.
 
 ## Planned — roughly in build order
-
-### Response quality
-- Regression tests + prompt tuning for the public agent's free-text replies (outside the predefined
-  UI-tool paths) — currently vague/not meaningful per user feedback.
 
 Not planned unless the need shows up later: RAG over the *core* knowledge base (resume/bio — the
 small notes-specific RAG layer above is a different thing, see PRD §6), dedicated LLM observability
