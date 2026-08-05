@@ -9,7 +9,7 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
 
 ## Shipped
 
-- FastAPI backend + Agents SDK via OpenRouter (OpenAI-compatible env vars, swappable provider).
+- FastAPI backend + Strands Agents via OpenRouter (OpenAI-compatible env vars, swappable provider).
 - `/chat` SSE endpoint: streamed text + tool-triggered UI cards (skills, experience, education,
   contact, resume, live GitHub projects). See [[ARCHITECTURE.md]] §3.
 - Vite + React + TypeScript SPA, deferred component rendering, sticky-bottom scroll during streaming.
@@ -59,12 +59,23 @@ pieces at the time). This doc tracks actual status so it doesn't drift from the 
   Monday auto-push above). See [[ARCHITECTURE.md]] §14.
 - Themed 404 page for any URL path other than `/` (the SPA has no router, so this checks
   `window.location.pathname` directly — `frontend/src/components/NotFound.tsx`).
+- Agent orchestration migrated from the OpenAI Agents SDK to **Strands Agents**
+  (`app/agent.py`, `app/admin_agent.py`, `app/usage_stats.py`) — same OpenRouter model, same tool
+  set and streaming UX, model-agnostic runtime instead of OpenAI's own agent framework. See
+  [[ARCHITECTURE.md]] §2.
 
 ## Planned — roughly in build order
 
 ### Deploy
 - FastAPI Cloud (backend) + Vercel (frontend), both free tier.
 - Point a personal subdomain at the deployed frontend, final DNS.
+
+### Admin agent context + response quality
+- Persist `telegram_bot._admin_history` to Postgres (same pattern as `app/sessions.py`) instead of
+  the in-memory-per-process dict — currently lost on every backend restart, which is why the admin
+  agent "forgets everything" and has to be re-prompted from scratch.
+- Regression tests + prompt tuning for the public agent's free-text replies (outside the predefined
+  UI-tool paths) — currently vague/not meaningful per user feedback.
 
 Not planned unless the need shows up later: RAG over the *core* knowledge base (resume/bio — the
 small notes-specific RAG layer above is a different thing, see PRD §6), dedicated LLM observability

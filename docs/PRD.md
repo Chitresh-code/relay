@@ -25,7 +25,7 @@ other 20% with enough context that the profile owner can respond without back-an
 ## 3. Core Features
 
 ### 3.1 Public chat agent
-- Built on the OpenAI Agents SDK.
+- Built on Strands Agents (migrated from the OpenAI Agents SDK — see [[ARCHITECTURE.md]] §2).
 - Knowledge base: resume content, a curated bio/FAQ doc, and public GitHub activity. LinkedIn is
   **not** live-integrated (see §6, Constraints) — relevant LinkedIn content is folded into the curated
   bio doc manually.

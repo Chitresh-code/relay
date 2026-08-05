@@ -6,23 +6,24 @@ is unset, same graceful-disable pattern as the rest of the *_store modules."""
 import os
 from datetime import date, timedelta
 
-from agents import Usage
-
 from .db import get_pool
 
 COST_PER_1M_INPUT = float(os.environ.get("OPENAI_COST_PER_1M_INPUT_TOKENS", "0"))
 COST_PER_1M_OUTPUT = float(os.environ.get("OPENAI_COST_PER_1M_OUTPUT_TOKENS", "0"))
 
 
-async def record_usage(usage: Usage) -> None:
-    if not usage.requests:
+async def record_usage(usage: dict, requests: int) -> None:
+    """`usage` is a Strands EventLoopMetrics.accumulated_usage dict (inputTokens/outputTokens,
+    Bedrock-style camelCase since Strands models its types after the Bedrock API); `requests` is
+    the event loop cycle count (one model call per cycle) — Strands has no single field for it."""
+    if not requests:
         return
     pool = await get_pool()
     if pool is None:
         return
-    cost = (usage.input_tokens / 1_000_000) * COST_PER_1M_INPUT + (
-        usage.output_tokens / 1_000_000
-    ) * COST_PER_1M_OUTPUT
+    input_tokens = usage.get("inputTokens", 0)
+    output_tokens = usage.get("outputTokens", 0)
+    cost = (input_tokens / 1_000_000) * COST_PER_1M_INPUT + (output_tokens / 1_000_000) * COST_PER_1M_OUTPUT
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO usage_stats (date, requests, tokens_in, tokens_out, estimated_cost_usd) "
@@ -32,7 +33,7 @@ async def record_usage(usage: Usage) -> None:
             "tokens_in = usage_stats.tokens_in + EXCLUDED.tokens_in, "
             "tokens_out = usage_stats.tokens_out + EXCLUDED.tokens_out, "
             "estimated_cost_usd = usage_stats.estimated_cost_usd + EXCLUDED.estimated_cost_usd",
-            usage.requests, usage.input_tokens, usage.output_tokens, cost,
+            requests, input_tokens, output_tokens, cost,
         )
 
 

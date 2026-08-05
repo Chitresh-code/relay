@@ -4,8 +4,7 @@ from app import admin_agent
 
 
 def test_agent_has_expected_tools():
-    tool_names = {t.name for t in admin_agent.admin_agent.tools}
-    assert tool_names == {"save_note", "get_session_history", "send_email"}
+    assert set(admin_agent.admin_agent.tool_names) == {"save_note", "get_session_history", "send_email"}
 
 
 def test_instructions_mention_candidate_name():
