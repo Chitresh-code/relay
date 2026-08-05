@@ -4,6 +4,8 @@ A chat agent grounded in a resume/profile, with streaming replies, rich UI cards
 experience, education, live GitHub projects, resume download), and escalation to Telegram
 when it can't answer. Runs on free-tier infra end to end (OpenRouter, FastAPI Cloud, Vercel).
 
+Live: [relay.chitreshgyanani.com](https://relay.chitreshgyanani.com)
+
 Docs: [PRD](docs/PRD.md) · [Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) ·
 repo conventions: [CLAUDE.md](CLAUDE.md)
 
@@ -27,7 +29,7 @@ one and asks you to confirm before saving), and the agent retrieves them on dema
 
 ## Structure
 
-- `backend/` — FastAPI + OpenAI Agents SDK, `/chat` SSE endpoint, admin Telegram bot
+- `backend/` — FastAPI + Strands Agents, `/chat` SSE endpoint, admin Telegram bot
 - `frontend/` — Vite + React + TypeScript SPA
 
 ## Making it yours
