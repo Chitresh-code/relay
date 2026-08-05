@@ -9,7 +9,7 @@ answer. See [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md),
 [Roadmap](docs/ROADMAP.md) before making architectural changes — keep them in sync with
 the code as it evolves.
 
-- `backend/` — FastAPI + OpenAI Agents SDK (via OpenRouter free models)
+- `backend/` — FastAPI + Strands Agents (via OpenRouter free models)
 - `frontend/` — Vite + React + TypeScript SPA
 
 ## Python tooling

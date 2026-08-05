@@ -1,13 +1,11 @@
-import json
 import logging
 import os
 
-from agents import Agent, ModelSettings, Runner, function_tool, set_tracing_disabled
-from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI, RateLimitError
-from openai.types.shared import Reasoning
 from pydantic import BaseModel
+from strands import Agent, tool
+from strands.models.openai import OpenAIModel
+from strands.models.openai_responses import OpenAIResponsesModel
 
 from .context_store import search_notes
 from .github import fetch_recent_repos
@@ -27,23 +25,29 @@ EMBED_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "openai/text-embedding-3-
 # gpt-5/o-series reasoning models only support reasoning_effort above "none" together with
 # function tools on the Responses API (/v1/responses) — Chat Completions has no way to carry
 # reasoning state across a tool round-trip, so it rejects anything but "none" once tools are
-# attached. OPENAI_API_STYLE picks which endpoint the Agents SDK talks to; defaults to
-# chat_completions since that's what OpenRouter (and most non-OpenAI-official endpoints) serve.
+# attached. OPENAI_API_STYLE picks which endpoint Strands talks to; defaults to chat_completions
+# since that's what OpenRouter (and most non-OpenAI-official endpoints) serve.
 REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT", "")
 API_STYLE = os.environ.get("OPENAI_API_STYLE", "chat_completions")
 
 logger = logging.getLogger("relay.agent")
 
 _client = AsyncOpenAI(base_url=BASE_URL, api_key=os.environ["OPENAI_API_KEY"])
-set_tracing_disabled(True)  # tracing uploads to platform.openai.com — not relevant off-OpenAI
 
-# Built directly against our client (not agents.Agent(model=<string>)): the SDK's default
-# MultiProvider splits bare model strings on "/" as a provider prefix, which misreads
-# OpenRouter ids like "meta-llama/llama-3.3-70b-instruct:free" as prefix "meta-llama".
-_ModelClass = OpenAIResponsesModel if API_STYLE == "responses" else OpenAIChatCompletionsModel
-MODEL = _ModelClass(model=MODEL_NAME, openai_client=_client)
+# reasoning_effort is a top-level Chat Completions param but a nested {"reasoning": {"effort":
+# ...}} object on the Responses API — same setting, different body shape per endpoint.
+_params = None
+if REASONING_EFFORT:
+    _params = (
+        {"reasoning": {"effort": REASONING_EFFORT}}
+        if API_STYLE == "responses"
+        else {"reasoning_effort": REASONING_EFFORT}
+    )
 
-MODEL_SETTINGS = ModelSettings(reasoning=Reasoning(effort=REASONING_EFFORT)) if REASONING_EFFORT else None
+_ModelClass = OpenAIResponsesModel if API_STYLE == "responses" else OpenAIModel
+# client_args (not client=): OpenAIResponsesModel only accepts client_args, so this stays
+# portable across both model classes at the cost of a second AsyncOpenAI client under the hood.
+MODEL = _ModelClass(model_id=MODEL_NAME, client_args={"base_url": BASE_URL, "api_key": os.environ["OPENAI_API_KEY"]}, params=_params)
 
 
 async def _describe_from_readme(readme_text: str) -> str:
@@ -162,55 +166,55 @@ class ContactItem(BaseModel):
     value: str
 
 
-@function_tool
+@tool
 def show_skills(groups: list[SkillGroup]) -> str:
     """Render grouped skill tags."""
     return "Shown."
 
 
-@function_tool
+@tool
 def show_projects() -> str:
     """Render project cards: the 5 most recently updated public GitHub repos, fetched live."""
     return "Shown."
 
 
-@function_tool
+@tool
 def show_experience(items: list[ExperienceItem]) -> str:
     """Render role cards."""
     return "Shown."
 
 
-@function_tool
+@tool
 def show_education(items: list[EducationItem]) -> str:
     """Render education cards."""
     return "Shown."
 
 
-@function_tool
+@tool
 def show_contact(items: list[ContactItem]) -> str:
     """Render key/value contact rows."""
     return "Shown."
 
 
-@function_tool
+@tool
 def show_resume() -> str:
     """Render the resume view/download card. Call when the user asks for the resume, CV, or a download."""
     return "Shown."
 
 
-@function_tool
+@tool
 def show_info(quote: str) -> str:
     """Render a pull-quote card."""
     return "Shown."
 
 
-@function_tool
+@tool
 def request_contact(reason: str) -> str:
     """Render an inline contact-capture form when a question needs the profile owner directly."""
     return "Requested."
 
 
-@function_tool
+@tool
 async def search_context(query: str) -> str:
     """Look up notes added via the admin Telegram bot — info newer than the static profile
     (role changes, new projects, availability). Not a UI tool: nothing is shown to the
@@ -221,11 +225,9 @@ async def search_context(query: str) -> str:
 
 SYSTEM_PROMPT = SYSTEM_PROMPT_TEMPLATE.replace("{agent_name}", AGENT_NAME).replace("{profile}", PROFILE)
 
-_agent_kwargs = {"model_settings": MODEL_SETTINGS} if MODEL_SETTINGS else {}
-
 agent = Agent(
     name=AGENT_NAME,
-    instructions=SYSTEM_PROMPT,
+    system_prompt=SYSTEM_PROMPT,
     model=MODEL,
     tools=[
         show_skills,
@@ -238,24 +240,34 @@ agent = Agent(
         request_contact,
         search_context,
     ],
-    **_agent_kwargs,
+    callback_handler=None,
 )
+
+
+def _to_strands_messages(history: list[dict[str, str]]) -> list[dict]:
+    """DB-stored history is plain {role, content} text turns our own app wrote (app/sessions.py)
+    — never model/tool-call blocks — so converting to Strands' {role, content: [{"text": ...}]}
+    shape here can't smuggle in a forged toolUse block. See Strands' trusted-message-history docs."""
+    return [{"role": m["role"], "content": [{"text": m["content"]}]} for m in history]
 
 
 async def stream_reply(history: list[dict[str, str]]):
     """Yields ("token" | "component" | "error", payload) tuples for the SSE layer."""
     emitted_tools: set[str] = set()
+    result = None
     try:
-        result = Runner.run_streamed(agent, input=history)
-        async for event in result.stream_events():
-            if event.type == "raw_response_event":
-                data = event.data
-                if getattr(data, "type", None) == "response.output_text.delta":
-                    yield "token", {"text": data.delta}
-            elif event.type == "run_item_stream_event":
-                item = event.item
-                if item.type == "tool_call_item":
-                    name = getattr(item.raw_item, "name", None)
+        async for event in agent.stream_async(_to_strands_messages(history)):
+            if "data" in event:
+                yield "token", {"text": event["data"]}
+            elif "message" in event:
+                message = event["message"]
+                if message.get("role") != "assistant":
+                    continue
+                for block in message.get("content", []):
+                    tool_use = block.get("toolUse")
+                    if not tool_use:
+                        continue
+                    name = tool_use.get("name")
                     # Enforce "at most one UI tool call per turn" server-side too — small/free
                     # models don't always follow that instruction, and repeat calls would mean
                     # redundant GitHub/README/LLM work for show_projects.
@@ -274,12 +286,11 @@ async def stream_reply(history: list[dict[str, str]]):
                             items = []
                         yield "component", {"tool": name, "content": {"items": items}}
                     elif name in UI_TOOL_NAMES:
-                        try:
-                            args = json.loads(item.raw_item.arguments or "{}")
-                        except json.JSONDecodeError:
-                            args = {}
-                        yield "component", {"tool": name, "content": args}
-        await record_usage(result.context_wrapper.usage)
+                        yield "component", {"tool": name, "content": tool_use.get("input") or {}}
+            elif "result" in event:
+                result = event["result"]
+        if result is not None:
+            await record_usage(result.metrics.accumulated_usage, len(result.metrics.cycle_durations))
     except RateLimitError:
         logger.warning("Model rate limit hit")
         yield "error", {"message": "Getting a lot of requests right now — try again in a minute."}

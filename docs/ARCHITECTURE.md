@@ -7,7 +7,7 @@ Status: Draft v1 · companion to [[PRD.md]]
 ```mermaid
 flowchart TD
     Recruiter([Recruiter]) -->|chats with| Widget["Web widget (SPA)<br/>Vite + React<br/>hosted: Vercel"]
-    Widget -->|POST /chat| Backend["FastAPI backend<br/>OpenAI Agents SDK via OpenRouter<br/>hosted: FastAPI Cloud"]
+    Widget -->|POST /chat| Backend["FastAPI backend<br/>Strands Agents via OpenRouter<br/>hosted: FastAPI Cloud"]
     Widget -->|POST /contact| Backend
 
     Backend <--> DB[("Neon Postgres<br/>notes, conversations, messages, escalations, leads, usage_stats")]
@@ -37,9 +37,9 @@ flowchart TD
 
 | Concern                                         | Choice                                                                                          | Why                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent runtime                                   | OpenAI Agents SDK (Python)                                                                      | requested; native structured-output support via `output_type`, native tool-calling for `request_contact`/`search_context`                                                                                                                                                                                                                          |
-| Model provider                                  | **OpenRouter**, free-tier (`:free`) models                                                      | Agents SDK talks to any OpenAI-compatible endpoint. Configured via standard `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`OPENAI_RESPONSES_MODEL` env vars (defaulting to OpenRouter) so switching providers later is an env change, not a code change. Zero LLM cost today; tradeoff is free-model rate limits and occasional availability changes, see §11 |
-| Backend                                         | FastAPI                                                                                         | requested; async, pairs naturally with Agents SDK, deploys to FastAPI Cloud                                                                                                                                                                                                                                                                        |
+| Agent runtime                                   | **Strands Agents** (Python) — migrated from the OpenAI Agents SDK                               | native tool-calling for `request_contact`/`search_context`; model-agnostic runtime not tied to OpenAI's own agent framework                                                                                                                                                                                                                          |
+| Model provider                                  | **OpenRouter**, free-tier (`:free`) models                                                      | Strands' OpenAI provider talks to any OpenAI-compatible endpoint. Configured via standard `OPENAI_BASE_URL`/`OPENAI_API_KEY`/`OPENAI_RESPONSES_MODEL` env vars (defaulting to OpenRouter) so switching providers later is an env change, not a code change. Zero LLM cost today; tradeoff is free-model rate limits and occasional availability changes, see §11 |
+| Backend                                         | FastAPI                                                                                         | requested; async, pairs naturally with Strands' async agent runtime, deploys to FastAPI Cloud                                                                                                                                                                                                                                                                        |
 | Backend hosting                                 | **FastAPI Cloud**, free tier                                                                    | requested; purpose-built for FastAPI, avoids configuring a generic PaaS                                                                                                                                                                                                                                                                            |
 | Frontend                                        | Vite + React SPA (not Next.js)                                                                  | it's a single chat page, not a multi-route site — a static SPA is less to configure/deploy than a framework with SSR you don't need                                                                                                                                                                                                                |
 | Frontend hosting                                | **Vercel**, free/Hobby tier                                                                     | requested; trivial static deploy, free custom subdomain                                                                                                                                                                                                                                                                                            |
@@ -177,7 +177,7 @@ person-specific inputs — swap those three plus the `CANDIDATE_NAME`/`GITHUB_US
 rewritten (new role, new project, availability). `app/telegram_bot.py` long-polls Telegram for
 messages from a single admin `chat_id` (`TELEGRAM_ADMIN_CHAT_ID` — anyone else is ignored). Anything
 that isn't a reply to an escalation alert (§3.3/§9 below) goes to `app/admin_agent.py` — a second,
-private Agents SDK agent (own tool set, same underlying `MODEL`) the admin chats with directly,
+private Strands agent (own tool set, same underlying `MODEL`) the admin chats with directly,
 with three tools:
 - `save_note` — rewrites rough input into a clean note and saves it, same effect the old
   manual rewrite/confirm flow had, just conversational now
@@ -212,7 +212,7 @@ table plus a live `COUNT(DISTINCT)` over `conversations`/`messages` for unique s
 the ask (traffic, usage, weekly updates) without adding a service like Langfuse or Helicone.
 
 **Upgrade path**: if you want request-level tracing/replay (not just aggregate stats), Langfuse has a
-generous free cloud tier and drops in as a wrapper around the Agents SDK calls — add it later without
+generous free cloud tier and drops in as a wrapper around the Strands agent calls — add it later without
 touching the data model above.
 
 ## 8. Data model (minimum viable)
@@ -276,7 +276,7 @@ Everything above — including the LLM itself — runs on free tiers at personal
 levels:
 
 - Model calls go through **OpenRouter's free (**`:free`**-suffixed) models** via an OpenAI-compatible
-endpoint, so the Agents SDK setup barely changes — just a different `base_url` and API key.
+endpoint, so the Strands model config barely changes — just a different `base_url` and API key.
 - Tradeoff: free OpenRouter models carry real rate limits (roughly tens of requests/minute and a
 daily cap shared across all free models, tighter still with $0 account balance) and the specific
 models on offer can change over time. Fine for a personal-scale resume bot; not something to build
